@@ -1,0 +1,16 @@
+model_path: /home/ruoyu/methane_emission/train/experiments/BYOL_resnet34_l2a_32_200/best.pth
+# model_path: null
+epochs: 200
+lr: 0.0005
+batch_size: 256
+model: ResNet34
+channels: [0,1,2,3,4,5,6,7,8,9,10,11]
+input_channel: 12
+data_range: all_time
+location_range: permian
+lr_gamma: 0.98
+output_dir: /home/ruoyu/methane_emission/train/experiments/pure_resnet34_classification_permian_basin_l2a_finetune_32_256batch
+train_data_path: /home/ruoyu/methane_emission/data/MethaneS2CM/train_shuffled.csv
+test_data_path: /home/ruoyu/methane_emission/data/MethaneS2CM/test_shuffled.csv
+dp: False
+device: cuda:0

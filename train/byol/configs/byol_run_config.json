@@ -1,0 +1,9 @@
+{
+  "experiment_mode": "pretrain",
+  "worker_mode": "train",
+  "pretrain_epochs": 100,
+  "batch_size": 512,
+  "data_dir": "../data/pretrain/data_download_chips_32",
+  "stats_path": "./byol/experiments/chip_stats.npz",
+  "checkpoint_root": "./byol/experiments/checkpoints"
+}

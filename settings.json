@@ -1,0 +1,10 @@
+{
+  "files.watcherExclude": {
+    "**/data/**": true,
+    "**/*.SAFE/**": true,
+    "**/*.tif": true,
+    "**/*.nc": true,
+    "**/.git/**": true,
+    "**/__pycache__/**": true
+  }
+}

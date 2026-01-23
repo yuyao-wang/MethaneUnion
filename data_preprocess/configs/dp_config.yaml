@@ -1,0 +1,5 @@
+plot_output_dir: /data2/yuyao/methane_emission/data/plot_output_L8_L2SP
+raw_data_dir_l89_l2sp: /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_L89_L2SP
+
+usgs_username: Pheobe
+usgs_token: rC9ZtvWS9A7zSrymMsuI6rQVm2uSGyXYVlapcL08VPMLGSyR1xzg95a6W88gKlyr

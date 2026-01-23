@@ -1,0 +1,26 @@
+raw_data_dir: /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_s2_90360
+local_base_dir: /data2/yuyao/methane_emission/carbonmapper_data_l2a_90360
+
+cdse_username0: yuyao16@ualberta.ca
+cdse_password0: finhah-3zihty-seHmuf
+
+cdse_username1: yuyaow42@gmail.com
+cdse_password1: finhah-3zihty-seHmuf  
+
+cdse_username2: pheobew42@gmail.com
+cdse_password2: finhah-3zihty-seHmuf  
+
+proxy_pool:
+  enabled: true
+  cooldown_seconds: 180
+  entries:
+    - "http://nnmkgxqi:3rl1n6qhpsqf@142.111.48.253:7030"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@31.59.20.176:6754"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@23.95.150.145:6114"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@198.23.239.134:6540"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@107.172.163.27:6543"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@198.105.121.200:6462"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@64.137.96.74:6641"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@84.247.60.125:6095"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@216.10.27.159:6837"
+    - "http://nnmkgxqi:3rl1n6qhpsqf@142.111.67.146:5611"

@@ -1,0 +1,4 @@
+sentinelhub_client_id: efec6434-d715-4838-891b-62b68114e3b1
+sentinelhub_client_secret: 8KcqT4dEAzUoVVw9SHFINI8Xn5PozGpy
+# landsat_data_collection: LANDSAT_OT_L2   # or LANDSAT8_L2, etc.
+sentinelhub_base_url: "https://services-uswest2.sentinel-hub.com"

@@ -1,0 +1,7 @@
+output_dir: /home/hongxuan/methane/methane_emission/train/experiments/BYOL_resnet34_l2a_32_resize128_200
+num_epochs: 200
+batch_size: 256
+save_epoch: 20
+dp: False
+model: ResNet34
+device: cuda:1
