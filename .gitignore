@@ -25,3 +25,4 @@ data/pretrain
 /preprocess_dataset_L89/simulated_landsat_tifs
 /CM_s2_l8_l89.tar.gz
 /CM_s2_l8_s2.tar.gz
+/csvs
