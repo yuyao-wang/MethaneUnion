@@ -14,10 +14,10 @@ import threading
 # Config
 # =========================
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-BASE_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/Dataset/data_dir_l89_L2SR/l89_temporal_32_resized_to_224_updated"
+BASE_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/Dataset/data_dir_l89_L2SR/l89_temporal_16_resized_to_224"
 INPUT_CSV = "./CM_L89_L2SR_std512.csv"
 
-OS_SIZE = 32
+OS_SIZE = 16
 TARGET_SIZE = 224
 CENTER_BOX = 6
 MISSING_THRESH = 0.25
