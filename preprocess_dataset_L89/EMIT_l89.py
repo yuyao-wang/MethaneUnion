@@ -4,162 +4,146 @@ import pandas as pd
 import numpy as np
 import xarray as xr
 import rioxarray
-import earthaccess
-import cupy as cp
+import torch
+import torch.nn.functional as F
 from pathlib import Path
 from pyproj import Transformer
-from scipy.spatial import KDTree as CPU_KDTree
+import multiprocessing as mp
 
 # ==================== 用户配置区 ====================
 CSV_PATH = "./merged_with_emit_tag.csv"
 SRF_CSV = "./landsat9_oli_srf.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
 OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_l89_L2SR/EMIT_simulated_landsat9_60resolution")
-
-CHIP_SIZE_PX = 512    # 256px at 60m covers same area as 512px at 30m
-SCALE_M = 60          # Native EMIT resolution
+CHIP_SIZE_PX = 512
+SCALE_M = 60
+NUM_GPUS = 2
 # ===================================================
-
-EMIT_RAW_DIR.mkdir(exist_ok=True, parents=True)
-OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
-
-# Login to NASA Earthdata
-auth = earthaccess.login()
 
 def get_utm_crs(lat, lon):
     zone = int((lon + 180) / 6) + 1
-    epsg = f"EPSG:{32600 + zone if lat >= 0 else 32700 + zone}"
-    return epsg
-
-def download_emit_granule(granule_id):
-    existing = list(EMIT_RAW_DIR.glob(f"*{granule_id}*RFL*.nc"))
-    if existing: return existing[0]
-    
-    results = earthaccess.search_data(short_name='EMITL2ARFL', granule_name=granule_id)
-    if not results: return None
-    
-    links = [link for link in results[0].data_links() if "UNCERT" not in link and "RFL" in link]
-    files = earthaccess.download(links, str(EMIT_RAW_DIR))
-    return Path(files[0]) if files else None
+    return f"EPSG:{32600 + zone if lat >= 0 else 32700 + zone}"
 
 def get_spectral_matrix(emit_waves, srf_df):
-    """
-    Creates a (Bands_EMIT x 7) matrix. 
-    Multiplying EMIT data by this matrix performs spectral convolution for all 7 bands at once.
-    """
     matrix = np.zeros((len(emit_waves), 7))
     for i in range(1, 8):
-        # Interpolate Landsat SRF to EMIT wavelengths
         w = np.interp(emit_waves, srf_df["wavelength"], srf_df[f"b{i}"], left=0, right=0)
         matrix[:, i-1] = w / (w.sum() + 1e-12)
-    return cp.array(matrix)
+    return torch.tensor(matrix, dtype=torch.float32)
+
+def process_worker(gpu_id, granule_list, target_df, srf_df):
+    """
+    每个 GPU 进程执行的任务
+    """
+    device = torch.device(f"cuda:{gpu_id}")
+    torch.cuda.set_device(device)
+    
+    # 预加载光谱矩阵（假设所有文件波段一致）
+    # 实际生产中建议在循环内部根据第一个文件初始化
+    spec_mat = None 
+
+    for granule_id in granule_list:
+        group = target_df[target_df['emit_granule_id'] == granule_id]
+        rfl_files = list(EMIT_RAW_DIR.glob(f"*{granule_id}*RFL*.nc"))
+        if not rfl_files: continue
+        rfl_path = rfl_files[0]
+
+        print(f"GPU {gpu_id} | Processing {granule_id} ({len(group)} plumes)")
+
+        try:
+            with xr.open_dataset(rfl_path, group='location') as ds_loc:
+                full_lats = ds_loc['lat'].values
+                full_lons = ds_loc['lon'].values
+            
+            if spec_mat is None:
+                with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
+                    spec_mat = get_spectral_matrix(dsb['wavelengths'].values, srf_df).to(device)
+
+            ds_rfl = xr.open_dataset(rfl_path)
+            reflectance = ds_rfl['reflectance']
+
+            for _, row in group.iterrows():
+                plume_id = row['plume_id']
+                out_tif = OUTPUT_DIR / f"{plume_id}_sim_L9.tif"
+                if out_tif.exists(): continue
+
+                # 1. 局部裁剪以节省显存
+                p_lat, p_lon = row['plume_latitude'], row['plume_longitude']
+                # 裁剪半径约 20km
+                mask_spatial = (full_lats > p_lat - 0.2) & (full_lats < p_lat + 0.2) & \
+                               (full_lons > p_lon - 0.2) & (full_lons < p_lon + 0.2)
+                y_idx, x_idx = np.where(mask_spatial)
+                if len(y_idx) == 0: continue
+                y_m, y_M, x_m, x_M = y_idx.min(), y_idx.max(), x_idx.min(), x_idx.max()
+
+                # 提取裁剪块并转为 Tensor
+                crop_lat = torch.from_numpy(full_lats[y_m:y_M, x_m:x_m]).to(device)
+                crop_lon = torch.from_numpy(full_lons[y_m:y_M, x_m:x_m]).to(device)
+                crop_rfl = torch.from_numpy(np.nan_to_num(reflectance[y_m:y_M, x_m:x_m, :].values, 0)).to(device)
+
+                # 2. 光谱卷积 (Pixels, Bands) @ (Bands, 7)
+                # (H, W, 285) @ (285, 7) -> (H, W, 7) -> (1, 7, H, W) 适配 grid_sample
+                simulated = torch.matmul(crop_rfl, spec_mat).permute(2, 0, 1).unsqueeze(0)
+
+                # 3. 准备采样网格 (Target Grid)
+                utm_epsg = get_utm_crs(p_lat, p_lon)
+                to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
+                to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
+                
+                cx, cy = to_utm.transform(p_lon, p_lat)
+                off = (CHIP_SIZE_PX / 2 - 0.5) * SCALE_M
+                tx = (cx - off) + np.arange(CHIP_SIZE_PX) * SCALE_M
+                ty = (cy + offset) - np.arange(CHIP_SIZE_PX) * SCALE_M # 注意这里 offset 的逻辑同前
+                mx, my = np.meshgrid(tx, ty)
+                t_lon, t_lat = to_wgs.transform(mx, my)
+
+                # 将目标经纬度映射到裁剪块的相对坐标 [-1, 1]
+                # grid_sample 要求 grid 的维度是 (1, H_out, W_out, 2)，最后一维是 (x, y) 且映射到 [-1, 1]
+                lat_min, lat_max = crop_lat.min(), crop_lat.max()
+                lon_min, lon_max = crop_lon.min(), crop_lon.max()
+                
+                grid_x = 2.0 * (torch.from_numpy(t_lon).to(device) - lon_min) / (lon_max - lon_min) - 1.0
+                grid_y = 2.0 * (torch.from_numpy(t_lat).to(device) - lat_min) / (lat_max - lat_min) - 1.0
+                grid = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0).float()
+
+                # 4. 执行重采样
+                # mode='bilinear' 比最近邻更平滑，padding_mode='zeros' 处理越界
+                final_output = F.grid_sample(simulated, grid, mode='bilinear', padding_mode='zeros', align_corners=True)
+                res_np = final_output.squeeze().cpu().numpy()
+
+                # 5. 保存
+                sim_da = xr.DataArray(res_np, dims=("band", "y", "x"), coords={"band": np.arange(1, 8), "y": ty, "x": tx})
+                sim_da.rio.write_crs(utm_epsg, inplace=True)
+                sim_da.rio.to_raster(out_tif)
+
+                del crop_rfl, simulated, final_output, grid
+                torch.cuda.empty_cache()
+
+            ds_rfl.close()
+        except Exception as e:
+            print(f"Error on GPU {gpu_id} for {granule_id}: {e}")
 
 def main():
+    OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
     df = pd.read_csv(CSV_PATH)
     srf_df = pd.read_csv(SRF_CSV)
     
-    # Filter targets
     mask = (df['plume_latitude'] >= 30) & (df['plume_latitude'] <= 35) & (df['has_emit'] == 1)
-    target_df = df[mask]
+    target_df = df[mask].copy()
     
-    print(f"Total tasks: {len(target_df)}")
-    
-    spectral_matrix = None # Will initialize with first file
+    granule_ids = target_df['emit_granule_id'].unique()
+    # 任务平分给两个 GPU
+    split_granules = np.array_split(granule_ids, NUM_GPUS)
 
-    for _, row in target_df.iterrows():
-        plume_id = row['plume_id']
-        out_tif = OUTPUT_DIR / f"{plume_id}_sim_L9.tif"
-        
-        if out_tif.exists():
-            print(f"   [Skip] {plume_id}")
-            continue
+    mp.set_start_method('spawn', force=True)
+    processes = []
+    for i in range(NUM_GPUS):
+        p = mp.Process(target=process_worker, args=(i, split_granules[i].tolist(), target_df, srf_df))
+        p.start()
+        processes.append(p)
 
-        rfl_path = download_emit_granule(row['emit_granule_id'])
-        if not rfl_path: continue
-
-        print(f"\n[Processing] {plume_id}")
-
-        try:
-            # 1. Open datasets using context managers to ensure memory is released
-            with xr.open_dataset(rfl_path, group='location', engine='netcdf4') as ds_loc:
-                lats, lons = ds_loc['lat'].values, ds_loc['lon'].values
-                
-                # Create a spatial crop mask (~10km buffer)
-                mask_spatial = (lats > row['plume_latitude'] - 0.15) & (lats < row['plume_latitude'] + 0.15) & \
-                               (lons > row['plume_longitude'] - 0.15) & (lons < row['plume_longitude'] + 0.15)
-                y_idxs, x_idxs = np.where(mask_spatial)
-                
-                if len(y_idxs) == 0:
-                    print(f"   [Error] Plume {plume_id} not found in granule coordinates.")
-                    continue
-                
-                y_min, y_max = y_idxs.min(), y_idxs.max()
-                x_min, x_max = x_idxs.min(), x_idxs.max()
-                
-                lat_crop, lon_crop = lats[y_min:y_max, x_min:x_max], lons[y_min:y_max, x_min:x_max]
-
-            with xr.open_dataset(rfl_path, engine='netcdf4') as ds:
-                # Load ONLY the local crop of reflectance into RAM
-                rfl_crop = ds['reflectance'][y_min:y_max, x_min:x_max, :].values
-                
-            if spectral_matrix is None:
-                with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
-                    spectral_matrix = get_spectral_matrix(dsb['wavelengths'].values, srf_df)
-
-            # 2. Fast GPU Spectral Convolution
-            # (Pixels_Y, Pixels_X, 285) @ (285, 7) -> (Pixels_Y, Pixels_X, 7)
-            cp_rfl = cp.array(np.nan_to_num(rfl_crop, 0))
-            cp_simulated = cp.matmul(cp_rfl, spectral_matrix).transpose(2, 0, 1) # to (7, Y, X)
-            
-            # 3. Spatial Transformation (KDTree)
-            utm_epsg = get_utm_crs(row['plume_latitude'], row['plume_longitude'])
-            to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
-            to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
-            
-            center_x, center_y = to_utm.transform(row['plume_longitude'], row['plume_latitude'])
-            half_size = (CHIP_SIZE_PX * SCALE_M) / 2
-            target_x = np.linspace(center_x - half_size, center_x + half_size, CHIP_SIZE_PX)
-            target_y = np.linspace(center_y + half_size, center_y - half_size, CHIP_SIZE_PX)
-            
-            mesh_x, mesh_y = np.meshgrid(target_x, target_y)
-            t_lon, t_lat = to_wgs.transform(mesh_x, mesh_y)
-            
-            e_coords = np.stack([lat_crop.ravel(), lon_crop.ravel()], axis=1)
-            t_coords = np.stack([t_lat.ravel(), t_lon.ravel()], axis=1)
-            
-            tree = CPU_KDTree(e_coords)
-            dist, indices = tree.query(t_coords, distance_upper_bound=0.001)
-            
-            # 4. Final Mapping & Masking
-            cp_indices = cp.array(indices)
-            # Efficiently pull all 7 bands at once using advanced indexing
-            # Reshape cp_simulated to (7, -1) to index via flat indices
-            final_output = cp_simulated.reshape(7, -1)[:, cp_indices].reshape(7, CHIP_SIZE_PX, CHIP_SIZE_PX)
-            
-            # Apply distance mask (invalid pixels = 0)
-            invalid_mask = cp.array(dist == float('inf')).reshape(CHIP_SIZE_PX, CHIP_SIZE_PX)
-            final_output[:, invalid_mask] = 0
-
-            # 5. Save and Clean up
-            res_np = final_output.get()
-            
-            sim_da = xr.DataArray(
-                res_np,
-                dims=("band", "y", "x"),
-                coords={"band": np.arange(1, 8), "y": target_y, "x": target_x}
-            )
-            sim_da.rio.write_crs(utm_epsg, inplace=True)
-            sim_da.rio.to_raster(out_tif)
-            
-            print(f"   [Success] Saved to {out_tif}")
-
-            # Explicit Memory Management to prevent Kernel Crash
-            del cp_rfl, cp_simulated, final_output, rfl_crop, lat_crop, lon_crop, tree, res_np, sim_da
-            cp.get_default_memory_pool().free_all_blocks()
-            gc.collect()
-
-        except Exception as e:
-            print(f"   [Error] Task {plume_id} failed: {e}")
+    for p in processes:
+        p.join()
 
 if __name__ == "__main__":
     main()
