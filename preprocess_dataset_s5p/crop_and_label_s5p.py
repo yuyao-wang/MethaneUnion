@@ -13,11 +13,11 @@ from netCDF4 import Dataset
 
 
 # ============== input ==============
-IN_CSV = "/data2/yuyao/methane_emission/carbon_mapper_data/csvs/s5p_all_OFFL_with_centers.csv"
+IN_CSV = "./s5p_all_OFFL_with_centers.csv"
 
-OUT_ROOT = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/Dataset/s5p_patches_5x5_to_32_offl_triplet")
+OUT_ROOT = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/Dataset/s5p_patches_3x3_to_224_offl_triplet")
 OUT_ROOT.mkdir(parents=True, exist_ok=True)
-OUT_CSV = "./s5p_samples_5x5_to_32_triplet.csv"
+OUT_CSV = "./s5p_samples_3x3_to_224_triplet.csv"
 
 POS_DIR = OUT_ROOT / "samples2" / "pos"
 NEG_DIR = OUT_ROOT / "samples2" / "neg"
