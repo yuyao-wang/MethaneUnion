@@ -25,9 +25,9 @@ POS_DIR.mkdir(parents=True, exist_ok=True)
 NEG_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============== crop config ==============
-CROP_SIZE = 5
+CROP_SIZE = 3
 CROP_HALF = CROP_SIZE // 2
-OUT_SIZE = 32
+OUT_SIZE = 224
 
 MAX_MISSING_RATIO_T0 = 0.50
 
@@ -36,7 +36,7 @@ NEG_RANDOM_TRIES = 50          # ✅ 按你说的：随机 50 次
 # corners are tried first
 
 # parallel
-MAX_WORKERS = 8                # 网络盘建议 4~8
+MAX_WORKERS = 18                # 网络盘建议 4~8
 PRINT_EVERY = 50
 
 CH4_CANDIDATES = [
@@ -223,11 +223,9 @@ def process_one(args):
     px = int(float(row["nearest_ix"]))
     pos_centers = parse_centers(row.get("pos_centers", ""))
 
-    # must have at least one pos center
     if not pos_centers:
         raise RuntimeError("no_pos_centers_precomputed")
 
-    # Read 3 arrays (each at most once)
     ch4_t0, ok0, ch4name_used = read_ch4(p0, row.get("ch4_var", None))
     if not ok0 or ch4_t0 is None:
         raise RuntimeError("open_t0_fail")
@@ -235,20 +233,19 @@ def process_one(args):
     ch4_90, ok90, _ = read_ch4(p90, ch4name_used)
     ch4_360, ok360, _ = read_ch4(p360, ch4name_used)
 
-    H, W = ch4_t0.shape
-
     out_rows = []
     pos_dir = Path(pos_base) / plume_id
     neg_dir = Path(neg_base) / plume_id
     pos_dir.mkdir(parents=True, exist_ok=True)
     neg_dir.mkdir(parents=True, exist_ok=True)
 
-    # for each pos, save pos; try neg
+    # Modified loop: Process only the first valid center found
     for j, (cy, cx) in enumerate(pos_centers):
         pos0_small = crop_center(ch4_t0, cy, cx, CROP_HALF)
         if pos0_small is None or missing_ratio(pos0_small) > MAX_MISSING_RATIO_T0:
             continue
 
+        # Resize directly to 224x224
         pos0 = resize_nan_aware(pos0_small)
 
         if ok90 and ch4_90 is not None:
@@ -284,45 +281,34 @@ def process_one(args):
             "image_path": str(pos_npz), "center_iy": int(cy), "center_ix": int(cx), "label": 1
         })
 
-        # neg on t0 only; if fail -> keep only pos
+        # Process one negative sample for this positive sample
         neg_center = find_neg_center(ch4_t0, py, px, seed=idx * 1000 + j)
-        if neg_center is None:
-            continue
-        ncy, ncx = neg_center
-        neg0_small = crop_center(ch4_t0, ncy, ncx, CROP_HALF)
-        if neg0_small is None or missing_ratio(neg0_small) > MAX_MISSING_RATIO_T0:
-            continue
+        if neg_center is not None:
+            ncy, ncx = neg_center
+            neg0_small = crop_center(ch4_t0, ncy, ncx, CROP_HALF)
+            if neg0_small is not None and missing_ratio(neg0_small) <= MAX_MISSING_RATIO_T0:
+                neg0 = resize_nan_aware(neg0_small)
+                
+                # Handling temporal negatives
+                p90_n = crop_center(ch4_90, ncy, ncx, CROP_HALF) if ok90 and ch4_90 is not None else None
+                neg90 = resize_nan_aware(p90_n) if p90_n is not None else nan_out()
+                
+                p360_n = crop_center(ch4_360, ncy, ncx, CROP_HALF) if ok360 and ch4_360 is not None else None
+                neg360 = resize_nan_aware(p360_n) if p360_n is not None else nan_out()
 
-        neg0 = resize_nan_aware(neg0_small)
+                neg_stack = np.stack([neg0, neg90, neg360], axis=0).astype(np.float32)
+                neg_npz = neg_dir / f"s5p_neg_{j:02d}.npz"
+                np.savez_compressed(neg_npz, ch4=neg_stack, meta={"label": 0})
 
-        if ok90 and ch4_90 is not None:
-            p = crop_center(ch4_90, ncy, ncx, CROP_HALF)
-            neg90 = resize_nan_aware(p) if p is not None else nan_out()
-        else:
-            neg90 = nan_out()
+                out_rows.append({
+                    "plume_id": plume_id, "plume_time": plume_time, "lat": lat0, "lon": lon0,
+                    "has_90": bool(has90), "has_360": bool(has360), "ch4_var": ch4name_used,
+                    "image_path": str(neg_npz), "center_iy": int(ncy), "center_ix": int(ncx), "label": 0
+                })
 
-        if ok360 and ch4_360 is not None:
-            p = crop_center(ch4_360, ncy, ncx, CROP_HALF)
-            neg360 = resize_nan_aware(p) if p is not None else nan_out()
-        else:
-            neg360 = nan_out()
-
-        neg_stack = np.stack([neg0, neg90, neg360], axis=0).astype(np.float32)
-        neg_npz = neg_dir / f"s5p_neg_{j:02d}.npz"
-        np.savez_compressed(
-            neg_npz,
-            ch4=neg_stack,
-            meta={"label": 0, "plume_id": plume_id, "ch4_var": ch4name_used,
-                  "center_iy": int(ncy), "center_ix": int(ncx),
-                  "nearest_iy": int(py), "nearest_ix": int(px),
-                  "has_90": bool(has90), "has_360": bool(has360)}
-        )
-
-        out_rows.append({
-            "plume_id": plume_id, "plume_time": plume_time, "lat": lat0, "lon": lon0,
-            "has_90": bool(has90), "has_360": bool(has360), "ch4_var": ch4name_used,
-            "image_path": str(neg_npz), "center_iy": int(ncy), "center_ix": int(ncx), "label": 0
-        })
+        # ✅ CRITICAL CHANGE: Break after the first valid graph is created
+        if len(out_rows) >= 1:
+            break
 
     return out_rows
 

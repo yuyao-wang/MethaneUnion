@@ -15,9 +15,10 @@ from tqdm import tqdm
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
+
 # ==================== 用户配置区 ====================
-CSV_PATH = "./merged_with_emit_tag.csv"
-UPDATED_CSV_PATH = "./merged_with_simulated_path.csv"
+CSV_PATH = "./merged_with_emit_tag_permian_basin.csv"
+UPDATED_CSV_PATH = "./merged_with_simulated_path_permian_basin.csv"
 SRF_CSV = "./landsat9_oli_srf.csv"
 
 # 远程磁盘路径 - 确保这里路径最后有斜杠，或者使用 Path
@@ -28,7 +29,9 @@ OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data
 CHIP_SIZE_PX = 512
 SCALE_M = 60
 NUM_GPUS = 2
-BUFFER_SIZE = 6 
+BUFFER_SIZE = 3
+DOWNLOADING_FLAG = "__DOWNLOADING__"
+DOWNLOAD_FAILED = "__DOWNLOAD_FAILED__"
 # ===================================================
 
 def get_utm_crs(lat, lon):
@@ -41,6 +44,17 @@ def get_spectral_matrix(emit_waves, srf_df):
         w = np.interp(emit_waves, srf_df["wavelength"], srf_df[f"b{i}"], left=0, right=0)
         matrix[:, i-1] = w / (w.sum() + 1e-12)
     return torch.tensor(matrix, dtype=torch.float32)
+
+def clear_local_buffer():
+    """Remove leftover downloads so the buffer starts empty each run."""
+    if not LOCAL_BUFFER_DIR.exists():
+        return
+    for file_path in LOCAL_BUFFER_DIR.iterdir():
+        try:
+            if file_path.is_file() and file_path.suffix in {".nc", ".tmp"}:
+                file_path.unlink()
+        except Exception as e:
+            print(f"[Cleanup Warning] Could not remove {file_path}: {e}", flush=True)
 
 # ==================== 生产者：多线程数据拉取 ====================
 def download_task(granule_id, buffer_dict):
@@ -70,6 +84,7 @@ def download_task(granule_id, buffer_dict):
             return False
     except Exception as e:
         print(f"\n[Thread Error] {granule_id}: {e}", flush=True)
+        buffer_dict[granule_id] = DOWNLOAD_FAILED
         return False
 
 def data_prefetcher(granule_queue, buffer_dict):
@@ -77,7 +92,7 @@ def data_prefetcher(granule_queue, buffer_dict):
     # 这里的 max_workers 建议设为 3-5，太多可能会拖慢远程磁盘响应
     print(f"[Prefetcher] Multi-threaded loader started", flush=True)
     
-    with ThreadPoolExecutor(max_workers=12) as executor:
+    with ThreadPoolExecutor(max_workers=5) as executor:
         while True:
             # 只有当 Buffer 有空位时才分发新下载任务
             if len(buffer_dict) < BUFFER_SIZE:
@@ -86,7 +101,9 @@ def data_prefetcher(granule_queue, buffer_dict):
                     if granule_id is None: break
                     
                     # 提交异步下载任务
-                    executor.submit(download_task, granule_id, buffer_dict)
+                    if granule_id not in buffer_dict:
+                        buffer_dict[granule_id] = DOWNLOADING_FLAG
+                        executor.submit(download_task, granule_id, buffer_dict)
                 except:
                     continue # 队列暂时空了
             else:
@@ -104,13 +121,19 @@ def process_worker(gpu_id, granule_list, target_df, srf_df, return_dict, buffer_
     for granule_id in pbar:
         # 等待 Prefetcher 准备好数据
         wait_count = 0
-        while granule_id not in buffer_dict:
+        while True:
+            local_path_str = buffer_dict.get(granule_id)
+            if local_path_str and local_path_str not in {DOWNLOADING_FLAG}:
+                break
             time.sleep(1)
             wait_count += 1
-            if wait_count > 60: break # 等太久了
+            if wait_count > 60:
+                local_path_str = None
+                buffer_dict.pop(granule_id, None)
+                break # 等太久了
 
-        local_path_str = buffer_dict.get(granule_id)
-        if not local_path_str or local_path_str == "NOT_FOUND":
+        if not local_path_str or local_path_str in {"NOT_FOUND", DOWNLOAD_FAILED}:
+            buffer_dict.pop(granule_id, None)
             continue
         
         rfl_path = Path(local_path_str)
@@ -187,6 +210,7 @@ def process_worker(gpu_id, granule_list, target_df, srf_df, return_dict, buffer_
 def main():
     LOCAL_BUFFER_DIR.mkdir(exist_ok=True, parents=True)
     OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+    clear_local_buffer()
     
     print("--- EMIT Multi-GPU Buffer Pipeline ---", flush=True)
     df = pd.read_csv(CSV_PATH)
