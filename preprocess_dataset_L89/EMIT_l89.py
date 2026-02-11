@@ -1,264 +1,173 @@
+# convert EMIT to L9, 60m with optimized band alignment
 import os
 import gc
-import time
-import shutil
 import pandas as pd
 import numpy as np
 import xarray as xr
 import rioxarray
-import torch
-import torch.nn.functional as F
+import earthaccess
+import cupy as cp
 from pathlib import Path
 from pyproj import Transformer
-import multiprocessing as mp
-from tqdm import tqdm
-import sys
-from concurrent.futures import ThreadPoolExecutor
+from scipy.spatial import KDTree as CPU_KDTree
 
-
+os.umask(0) # 允许创建的文件拥有最大权限 (777)
 # ==================== 用户配置区 ====================
-CSV_PATH = "./merged_with_emit_tag_permian_basin.csv"
-UPDATED_CSV_PATH = "./merged_with_simulated_path_permian_basin.csv"
+CSV_PATH = "./merged_with_emit_tag.csv"
 SRF_CSV = "./landsat9_oli_srf.csv"
+EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
+OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_l89_L2SR/EMIT_simulated_landsat9_60resolution_NOnorm")
 
-# 远程磁盘路径 - 确保这里路径最后有斜杠，或者使用 Path
-REMOTE_EMIT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
-LOCAL_BUFFER_DIR = Path("./local_emit_buffer") 
-OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_l89_L2SR/EMIT_simulated_landsat9_60resolution")
-
-CHIP_SIZE_PX = 512
-SCALE_M = 60
-NUM_GPUS = 2
-BUFFER_SIZE = 3
-DOWNLOADING_FLAG = "__DOWNLOADING__"
-DOWNLOAD_FAILED = "__DOWNLOAD_FAILED__"
+CHIP_SIZE_PX = 512    
+SCALE_M = 60          
 # ===================================================
+
+EMIT_RAW_DIR.mkdir(exist_ok=True, parents=True)
+OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+
+# Login to NASA Earthdata
+auth = earthaccess.login()
 
 def get_utm_crs(lat, lon):
     zone = int((lon + 180) / 6) + 1
     return f"EPSG:{32600 + zone if lat >= 0 else 32700 + zone}"
+
+def download_emit_granule(granule_id):
+    existing = list(EMIT_RAW_DIR.glob(f"*{granule_id}*RFL*.nc"))
+    if existing: return existing[0]
+    
+    results = earthaccess.search_data(short_name='EMITL2ARFL', granule_name=granule_id)
+    if not results: return None
+    
+    links = [link for link in results[0].data_links() if "UNCERT" not in link and "RFL" in link]
+    files = earthaccess.download(links, str(EMIT_RAW_DIR))
+    return Path(files[0]) if files else None
 
 def get_spectral_matrix(emit_waves, srf_df):
     matrix = np.zeros((len(emit_waves), 7))
     for i in range(1, 8):
         w = np.interp(emit_waves, srf_df["wavelength"], srf_df[f"b{i}"], left=0, right=0)
         matrix[:, i-1] = w / (w.sum() + 1e-12)
-    return torch.tensor(matrix, dtype=torch.float32)
-
-def clear_local_buffer():
-    """Remove leftover downloads so the buffer starts empty each run."""
-    if not LOCAL_BUFFER_DIR.exists():
-        return
-    for file_path in LOCAL_BUFFER_DIR.iterdir():
-        try:
-            if file_path.is_file() and file_path.suffix in {".nc", ".tmp"}:
-                file_path.unlink()
-        except Exception as e:
-            print(f"[Cleanup Warning] Could not remove {file_path}: {e}", flush=True)
-
-# ==================== 生产者：多线程数据拉取 ====================
-def download_task(granule_id, buffer_dict):
-    """单个文件的下载任务"""
-    try:
-        # 搜索远程文件
-        remote_files = list(REMOTE_EMIT_DIR.glob(f"*{granule_id}*.nc"))
-        if not remote_files:
-            short_id = granule_id.split('.')[0]
-            remote_files = list(REMOTE_EMIT_DIR.glob(f"*{short_id}*.nc"))
-
-        if remote_files:
-            remote_path = remote_files[0]
-            local_path = LOCAL_BUFFER_DIR / remote_path.name
-            
-            # 如果本地没写完，执行拷贝
-            if not local_path.exists():
-                # 使用临时文件名，防止 GPU 进程读取到一个只写了一半的文件
-                tmp_path = local_path.with_suffix('.tmp')
-                shutil.copy2(remote_path, tmp_path)
-                tmp_path.rename(local_path)
-            
-            buffer_dict[granule_id] = str(local_path)
-            return True
-        else:
-            buffer_dict[granule_id] = "NOT_FOUND"
-            return False
-    except Exception as e:
-        print(f"\n[Thread Error] {granule_id}: {e}", flush=True)
-        buffer_dict[granule_id] = DOWNLOAD_FAILED
-        return False
-
-def data_prefetcher(granule_queue, buffer_dict):
-    """多线程分发器"""
-    # 这里的 max_workers 建议设为 3-5，太多可能会拖慢远程磁盘响应
-    print(f"[Prefetcher] Multi-threaded loader started", flush=True)
-    
-    with ThreadPoolExecutor(max_workers=5) as executor:
-        while True:
-            # 只有当 Buffer 有空位时才分发新下载任务
-            if len(buffer_dict) < BUFFER_SIZE:
-                try:
-                    granule_id = granule_queue.get(timeout=5)
-                    if granule_id is None: break
-                    
-                    # 提交异步下载任务
-                    if granule_id not in buffer_dict:
-                        buffer_dict[granule_id] = DOWNLOADING_FLAG
-                        executor.submit(download_task, granule_id, buffer_dict)
-                except:
-                    continue # 队列暂时空了
-            else:
-                time.sleep(1) # Buffer 满了，歇一会
-
-# ==================== 消费者：GPU 计算函数 ====================
-def process_worker(gpu_id, granule_list, target_df, srf_df, return_dict, buffer_dict):
-    device = torch.device(f"cuda:{gpu_id}")
-    torch.cuda.set_device(device)
-    
-    local_results = {}
-    spec_mat = None 
-    pbar = tqdm(granule_list, desc=f"GPU {gpu_id}", position=gpu_id, leave=True)
-
-    for granule_id in pbar:
-        # 等待 Prefetcher 准备好数据
-        wait_count = 0
-        while True:
-            local_path_str = buffer_dict.get(granule_id)
-            if local_path_str and local_path_str not in {DOWNLOADING_FLAG}:
-                break
-            time.sleep(1)
-            wait_count += 1
-            if wait_count > 60:
-                local_path_str = None
-                buffer_dict.pop(granule_id, None)
-                break # 等太久了
-
-        if not local_path_str or local_path_str in {"NOT_FOUND", DOWNLOAD_FAILED}:
-            buffer_dict.pop(granule_id, None)
-            continue
-        
-        rfl_path = Path(local_path_str)
-        group = target_df[target_df['emit_granule_id'] == granule_id]
-
-        try:
-            with xr.open_dataset(rfl_path, group='location') as ds_loc:
-                full_lats, full_lons = ds_loc['lat'].values, ds_loc['lon'].values
-            
-            if spec_mat is None:
-                with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
-                    spec_mat = get_spectral_matrix(dsb['wavelengths'].values, srf_df).to(device)
-
-            with xr.open_dataset(rfl_path) as ds_rfl:
-                reflectance = ds_rfl['reflectance']
-
-                for _, row in group.iterrows():
-                    plume_id = row['plume_id']
-                    out_tif = OUTPUT_DIR / f"{plume_id}_sim_L9.tif"
-                    if out_tif.exists():
-                        local_results[plume_id] = str(out_tif.absolute())
-                        continue
-
-                    # 1. 裁剪
-                    p_lat, p_lon = row['plume_latitude'], row['plume_longitude']
-                    mask = (full_lats > p_lat - 0.2) & (full_lats < p_lat + 0.2) & \
-                           (full_lons > p_lon - 0.2) & (full_lons < p_lon + 0.2)
-                    y_idx, x_idx = np.where(mask)
-                    if len(y_idx) == 0: continue
-                    y_m, y_M, x_m, x_M = y_idx.min(), y_idx.max(), x_idx.min(), x_idx.max()
-
-                    # 2. 计算 (仅读取切片)
-                    rfl_slice = reflectance[y_m:y_M, x_m:x_M, :].values
-                    crop_rfl = torch.from_numpy(np.nan_to_num(rfl_slice, 0)).to(device)
-                    simulated = torch.matmul(crop_rfl, spec_mat).permute(2, 0, 1).unsqueeze(0)
-
-                    # 3. 坐标映射
-                    utm_epsg = get_utm_crs(p_lat, p_lon)
-                    to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
-                    to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
-                    cx, cy = to_utm.transform(p_lon, p_lat)
-                    offset = (CHIP_SIZE_PX / 2 - 0.5) * SCALE_M
-                    tx = (cx - offset) + np.arange(CHIP_SIZE_PX) * SCALE_M
-                    ty = (cy + offset) - np.arange(CHIP_SIZE_PX) * SCALE_M
-                    mx, my = np.meshgrid(tx, ty)
-                    t_lon, t_lat = to_wgs.transform(mx, my)
-
-                    # 4. Grid Sample
-                    lat_c, lon_c = full_lats[y_m:y_M, x_m:x_M], full_lons[y_m:y_M, x_m:x_M]
-                    grid_x = 2.0 * (torch.from_numpy(t_lon).to(device) - lon_c.min()) / (lon_c.max() - lon_c.min()) - 1.0
-                    grid_y = 2.0 * (torch.from_numpy(t_lat).to(device) - lat_c.min()) / (lat_c.max() - lat_c.min()) - 1.0
-                    grid = torch.stack([grid_x, grid_y], dim=-1).unsqueeze(0).to(torch.float32)
-                    
-                    final_out = F.grid_sample(simulated, grid, mode='bilinear', padding_mode='zeros', align_corners=True)
-                    
-                    # 5. 保存
-                    sim_da = xr.DataArray(final_out.squeeze().cpu().numpy(), dims=("band", "y", "x"), 
-                                         coords={"band": np.arange(1,8), "y": ty, "x": tx})
-                    sim_da.rio.write_crs(utm_epsg, inplace=True)
-                    sim_da.rio.to_raster(out_tif)
-                    local_results[plume_id] = str(out_tif.absolute())
-
-            # 清理 Buffer
-            if rfl_path.exists():
-                rfl_path.unlink() # 处理完删除本地缓存
-            buffer_dict.pop(granule_id, None)
-            torch.cuda.empty_cache()
-
-        except Exception as e:
-            pbar.write(f"Error on {plume_id}: {e}")
-
-    return_dict[gpu_id] = local_results
+    return cp.array(matrix)
 
 def main():
-    LOCAL_BUFFER_DIR.mkdir(exist_ok=True, parents=True)
-    OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
-    clear_local_buffer()
-    
-    print("--- EMIT Multi-GPU Buffer Pipeline ---", flush=True)
     df = pd.read_csv(CSV_PATH)
     srf_df = pd.read_csv(SRF_CSV)
     
+    # 筛选目标数据
     mask = (df['plume_latitude'] >= 30) & (df['plume_latitude'] <= 35) & (df['has_emit'] == 1)
-    target_df = df[mask].copy()
-    granule_ids = target_df['emit_granule_id'].unique().tolist()
+    target_df = df[mask]
     
-    print(f"Total Granules: {len(granule_ids)}")
-
-    manager = mp.Manager()
-    buffer_dict = manager.dict()
-    granule_queue = manager.Queue()
-    for gid in granule_ids: granule_queue.put(gid)
-    for _ in range(NUM_GPUS): granule_queue.put(None)
+    print(f"Total tasks to process: {len(target_df)}")
     
-    return_dict = manager.dict()
-    split_granules = np.array_split(granule_ids, NUM_GPUS)
+    spectral_matrix = None 
+    target_scales = [10100, 11100, 13100, 16100, 20100, 23100, 21100]
 
-    mp.set_start_method('spawn', force=True)
-    
-    # 启动预取进程
-    p_fetch = mp.Process(target=data_prefetcher, args=(granule_queue, buffer_dict))
-    p_fetch.start()
+    for _, row in target_df.iterrows():
+        plume_id = row['plume_id']
+        out_tif = OUTPUT_DIR / f"{plume_id}_sim_L9.tif"
+        
+        if out_tif.exists():
+            print(f"   [Skip] {plume_id} already exists.")
+            continue
 
-    # 启动 GPU 进程
-    workers = []
-    for i in range(NUM_GPUS):
-        p = mp.Process(target=process_worker, args=(i, split_granules[i].tolist(), target_df, srf_df, return_dict, buffer_dict))
-        p.start()
-        workers.append(p)
+        rfl_path = download_emit_granule(row['emit_granule_id'])
+        if not rfl_path: 
+            print(f"   [Error] Could not download/find granule for {plume_id}")
+            continue
 
-    try:
-        for p in workers: p.join()
-    except KeyboardInterrupt:
-        print("\nTerminating...")
-        for p in workers: p.terminate()
-        p_fetch.terminate()
-    finally:
-        p_fetch.terminate()
+        print(f"\n[Processing] {plume_id}")
 
-    # 更新 CSV
-    all_paths = {}
-    for res in return_dict.values(): all_paths.update(res)
-    df['simulated_512_path'] = df['plume_id'].map(all_paths)
-    df.to_csv(UPDATED_CSV_PATH, index=False)
-    print(f"Updated CSV saved to {UPDATED_CSV_PATH}")
+        try:
+            # 1. 空间范围裁剪计算
+            with xr.open_dataset(rfl_path, group='location', engine='netcdf4') as ds_loc:
+                lats, lons = ds_loc['lat'].values, ds_loc['lon'].values
+                mask_spatial = (lats > row['plume_latitude'] - 0.15) & (lats < row['plume_latitude'] + 0.15) & \
+                               (lons > row['plume_longitude'] - 0.15) & (lons < row['plume_longitude'] + 0.15)
+                y_idxs, x_idxs = np.where(mask_spatial)
+                
+                if len(y_idxs) == 0:
+                    print(f"   [Error] Plume {plume_id} not found in spatial extent.")
+                    continue
+                
+                y_min, y_max, x_min, x_max = y_idxs.min(), y_idxs.max(), x_idxs.min(), x_idxs.max()
+                lat_crop, lon_crop = lats[y_min:y_max, x_min:x_max], lons[y_min:y_max, x_min:x_max]
+
+            # 2. 读取反射率并初始化卷积矩阵
+            with xr.open_dataset(rfl_path, engine='netcdf4') as ds:
+                rfl_crop = ds['reflectance'][y_min:y_max, x_min:x_max, :].values
+                
+            if spectral_matrix is None:
+                with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
+                    spectral_matrix = get_spectral_matrix(dsb['wavelengths'].values, srf_df)
+
+            # 3. GPU 卷积与分波段动态拉伸
+            cp_rfl = cp.array(np.nan_to_num(rfl_crop, 0))
+            sim_conv = cp.matmul(cp_rfl, spectral_matrix) # (Y, X, 7)
+            
+            cp_simulated_list = []
+            for b in range(7):
+                band_data = sim_conv[:, :, b]
+                valid_mask = (band_data > 0)
+                
+                if valid_mask.any():
+                    p_low = cp.percentile(band_data[valid_mask], 1)
+                    p_high = cp.percentile(band_data[valid_mask], 99)
+                    # 线性拉伸
+                    stretched = (band_data - p_low) / (p_high - p_low + 1e-6)
+                else:
+                    stretched = band_data
+
+                # 应用你调整后的参数：80% Offset + 60% Scale
+                offset = target_scales[b] * 0.8
+                final_band = (stretched * (target_scales[b] * 0.6)) + offset
+                # 保持背景为0
+                final_band = cp.where(band_data > 0, final_band, 0)
+                cp_simulated_list.append(cp.clip(final_band, 0, 65535))
+            
+            cp_simulated = cp.stack(cp_simulated_list, axis=0) # (7, Y, X)
+
+            # 4. 空间重采样 (KDTree)
+            utm_epsg = get_utm_crs(row['plume_latitude'], row['plume_longitude'])
+            to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
+            to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
+            
+            center_x, center_y = to_utm.transform(row['plume_longitude'], row['plume_latitude'])
+            half_size = (CHIP_SIZE_PX * SCALE_M) / 2
+            target_x = np.linspace(center_x - half_size, center_x + half_size, CHIP_SIZE_PX)
+            target_y = np.linspace(center_y + half_size, center_y - half_size, CHIP_SIZE_PX)
+            
+            mesh_x, mesh_y = np.meshgrid(target_x, target_y)
+            t_lon, t_lat = to_wgs.transform(mesh_x, mesh_y)
+            
+            tree = CPU_KDTree(np.stack([lat_crop.ravel(), lon_crop.ravel()], axis=1))
+            dist, indices = tree.query(np.stack([t_lat.ravel(), t_lon.ravel()], axis=1), distance_upper_bound=0.001)
+            
+            # 5. 映射与掩膜
+            cp_indices = cp.array(indices)
+            final_output = cp_simulated.reshape(7, -1)[:, cp_indices].reshape(7, CHIP_SIZE_PX, CHIP_SIZE_PX)
+            invalid_mask = cp.array(dist == float('inf')).reshape(CHIP_SIZE_PX, CHIP_SIZE_PX)
+            final_output[:, invalid_mask] = 0
+
+            # 6. 保存为 TIF
+            res_np = final_output.get().astype(np.uint16)
+            sim_da = xr.DataArray(
+                res_np,
+                dims=("band", "y", "x"),
+                coords={"band": np.arange(1, 8), "y": target_y, "x": target_x}
+            )
+            sim_da.rio.write_crs(utm_epsg, inplace=True)
+            sim_da.rio.to_raster(out_tif)
+            
+            print(f"   [Success] Saved: {out_tif.name} | Mean: {res_np.mean():.0f}")
+
+            # 清理显存和内存
+            del cp_rfl, sim_conv, cp_simulated, cp_simulated_list, final_output, rfl_crop, tree, res_np, sim_da
+            cp.get_default_memory_pool().free_all_blocks()
+            gc.collect()
+
+        except Exception as e:
+            print(f"   [Error] Task {plume_id} failed: {str(e)}")
 
 if __name__ == "__main__":
     main()

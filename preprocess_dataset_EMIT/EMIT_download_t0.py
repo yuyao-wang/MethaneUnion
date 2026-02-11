@@ -7,7 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 auth = earthaccess.login()
 
 # 配置
-CSV_PATH = "../preprocess_dataset_L89/merged_with_emit_tag.csv"
+CSV_PATH = "./merged_with_emit_tag.csv"
+# CSV_PATH = "./merged_with_emit_tag.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
 EMIT_RAW_DIR.mkdir(exist_ok=True)
 
@@ -15,15 +16,6 @@ EMIT_RAW_DIR.mkdir(exist_ok=True)
 df = pd.read_csv(CSV_PATH)
 df['datetime'] = pd.to_datetime(df['datetime'])
 
-# 筛选条件：Permian Basin 范围 + 时间 < 2024-12-31
-# Permian 典型范围: Lat [30, 34], Lon [-105, -101]
-# mask = (
-#     (df['plume_latitude'] >= 30) & (df['plume_latitude'] <= 34) &
-#     (df['plume_longitude'] >= -105) & (df['plume_longitude'] <= -101) &
-#     (df['datetime'] <= "2024-12-31") &
-#     (df['has_emit'] == 1)
-# )
-# filtered_df = df[mask].drop_duplicates(subset=['emit_granule_id'])
 filtered_df = df.drop_duplicates(subset=['emit_granule_id'])
 
 print(f"找到待下载的独特 EMIT 颗粒数量: {len(filtered_df)}")
