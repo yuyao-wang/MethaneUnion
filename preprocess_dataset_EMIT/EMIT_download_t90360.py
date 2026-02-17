@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any, Optional
+import time
 
 import earthaccess
 import pandas as pd
@@ -13,11 +14,13 @@ CSV_PATH = "./merged_with_emit_tag.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
 EMIT_RAW_DIR.mkdir(exist_ok=True)
 
-WINDOW_DAYS = 30
+WINDOW_DAYS = 50
 OFFSETS = [
+    (180, "emit_-180_granule_id"),
     (90, "emit_-90_granule_id"),
-    (360, "emit_-360_granule_id"),
 ]
+MAX_SEARCH_RETRIES = 5
+MAX_DOWNLOAD_RETRIES = 5
 
 
 def _safe_get(obj: Any, keys: list[str]) -> Any:
@@ -53,26 +56,64 @@ def get_granule_time(granule: Any) -> pd.Timestamp:
     return ts
 
 
-def download_one(granule: Any, granule_id: str) -> None:
+def download_one(granule: Any, granule_id: str) -> bool:
     if list(EMIT_RAW_DIR.glob(f"*{granule_id}*.nc")):
         print(f"{granule_id} 已存在，跳过下载")
-        return
+        return True
 
-    print(f"开始下载 {granule_id}")
-    earthaccess.download([granule], str(EMIT_RAW_DIR))
-    print(f"{granule_id} 下载完成")
+    last_err = None
+    for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
+        try:
+            print(f"开始下载 {granule_id} (第{attempt}/{MAX_DOWNLOAD_RETRIES}次)")
+            # 单文件串行下载，避免内部并行导致异常直接冒泡终止整批任务。
+            earthaccess.download([granule], str(EMIT_RAW_DIR), threads=1)
+            print(f"{granule_id} 下载完成")
+            return True
+        except Exception as e:
+            last_err = e
+            sleep_s = min(2 ** (attempt - 1), 16)
+            print(f"{granule_id} 下载失败(第{attempt}/{MAX_DOWNLOAD_RETRIES}次): {e}")
+            if attempt < MAX_DOWNLOAD_RETRIES:
+                time.sleep(sleep_s)
+
+    print(f"{granule_id} 下载最终失败，跳过。最后错误: {last_err}")
+    return False
 
 
 def find_best_granule(lat: float, lon: float, target_time: pd.Timestamp) -> Optional[Any]:
     start = (target_time - pd.Timedelta(days=WINDOW_DAYS)).isoformat()
     end = (target_time + pd.Timedelta(days=WINDOW_DAYS)).isoformat()
 
-    results = earthaccess.search_data(
-        short_name="EMITL2ARFL",
-        point=(float(lon), float(lat)),
-        temporal=(start, end),
-        count=200,
-    )
+    results = None
+    last_err = None
+    for attempt in range(1, MAX_SEARCH_RETRIES + 1):
+        try:
+            results = earthaccess.search_data(
+                short_name="EMITL2ARFL",
+                point=(float(lon), float(lat)),
+                temporal=(start, end),
+                # page_size=200 在 CMR 偶发 500，降低请求规模更稳。
+                count=100,
+            )
+            last_err = None
+            break
+        except Exception as e:
+            last_err = e
+            sleep_s = min(2 ** (attempt - 1), 16)
+            print(
+                f"search_data 失败(第{attempt}/{MAX_SEARCH_RETRIES}次): "
+                f"lon={lon}, lat={lat}, temporal=({start},{end}), err={e}"
+            )
+            if attempt < MAX_SEARCH_RETRIES:
+                time.sleep(sleep_s)
+
+    if last_err is not None:
+        print(
+            "search_data 多次失败，跳过该目标时间: "
+            f"lon={lon}, lat={lat}, temporal=({start},{end})"
+        )
+        return None
+
     if not results:
         return None
 
@@ -138,7 +179,9 @@ def main() -> None:
 
             df.at[i, col] = granule_id
             print(f"  {col}: {granule_id}")
-            download_one(granule, granule_id)
+            ok = download_one(granule, granule_id)
+            if not ok:
+                print(f"  {col}: granule_id 已记录，但下载失败")
 
     df.to_csv(CSV_PATH, index=False)
     print(f"已更新 CSV: {CSV_PATH}")
