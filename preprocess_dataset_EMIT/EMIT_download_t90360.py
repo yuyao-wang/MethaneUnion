@@ -14,10 +14,10 @@ CSV_PATH = "./merged_with_emit_tag.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
 EMIT_RAW_DIR.mkdir(exist_ok=True)
 
-WINDOW_DAYS = 50
+WINDOW_DAYS = 180
 OFFSETS = [
     (180, "emit_-180_granule_id"),
-    (90, "emit_-90_granule_id"),
+    # (90, "emit_-90_granule_id"),
 ]
 MAX_SEARCH_RETRIES = 5
 MAX_DOWNLOAD_RETRIES = 5

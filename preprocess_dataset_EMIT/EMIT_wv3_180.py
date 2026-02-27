@@ -19,7 +19,7 @@ OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/EMIT_sim
 
 CHIP_SIZE_PX = 512    
 SCALE_M = 60          
-MAX_WORKERS = 12  # 根据显存大小调整。如果显存 > 24G，可以设为 8 或更多。
+MAX_WORKERS = 4  # 根据显存大小调整。如果显存 > 24G，可以设为 8 或更多。
 # ===================================================
 
 os.umask(0)
@@ -43,12 +43,12 @@ def process_single_task(row_tuple, srf_data):
     """ 单个任务的处理逻辑 """
     _, row = row_tuple
     plume_id = row['plume_id']
-    out_tif = OUTPUT_DIR / f"{plume_id}_sim_WV3.tif"
+    out_tif = OUTPUT_DIR / f"{plume_id}_-180_sim_WV3.tif"
     
     if out_tif.exists():
         return f"[Skip] {plume_id}"
 
-    rfl_path = find_local_granule(row['emit_granule_id'])
+    rfl_path = find_local_granule(row['emit_-180_granule_id'])
     if not rfl_path:
         return f"[Error] Not found: {plume_id}"
 
