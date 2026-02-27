@@ -15,6 +15,7 @@ EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_da
 EMIT_RAW_DIR.mkdir(exist_ok=True)
 
 WINDOW_DAYS = 180
+WINDOW_DAYS_2 = 80
 OFFSETS = [
     (180, "emit_-180_granule_id"),
     # (90, "emit_-90_granule_id"),
@@ -82,7 +83,7 @@ def download_one(granule: Any, granule_id: str) -> bool:
 
 def find_best_granule(lat: float, lon: float, target_time: pd.Timestamp) -> Optional[Any]:
     start = (target_time - pd.Timedelta(days=WINDOW_DAYS)).isoformat()
-    end = (target_time + pd.Timedelta(days=WINDOW_DAYS)).isoformat()
+    end = (target_time + pd.Timedelta(days=WINDOW_DAYS_2)).isoformat()
 
     results = None
     last_err = None
