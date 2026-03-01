@@ -16,6 +16,8 @@ EMIT_RAW_DIR.mkdir(exist_ok=True)
 
 WINDOW_DAYS = 180
 WINDOW_DAYS_2 = 80
+# WINDOW_DAYS = 90
+# WINDOW_DAYS_2 = 70
 OFFSETS = [
     (180, "emit_-180_granule_id"),
     # (90, "emit_-90_granule_id"),
@@ -154,10 +156,6 @@ def main() -> None:
         base_time = row["datetime"]
         lat = row["plume_latitude"]
         lon = row["plume_longitude"]
-
-        if pd.isna(base_time) or pd.isna(lat) or pd.isna(lon):
-            print(f"[{n}/{len(work_idx)}] 行 {i} 缺少时间/经纬度，跳过")
-            continue
 
         print(f"[{n}/{len(work_idx)}] 行 {i} 开始处理")
         for days, col in OFFSETS:
