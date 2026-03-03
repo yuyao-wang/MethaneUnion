@@ -39,7 +39,7 @@ CENTER_BOX = 6       # 中心抖动范围（像素）
 MISSING_THRESH = 0.25
 N_POS = 16           # 每个 plume 的正样本数
 N_NEG = 16           # 每个 plume 的负样本数
-NUM_WORKERS = 8
+NUM_WORKERS = 18
 
 counter_lock = threading.Lock()
 global_cnt = 0  # 全局样本 id 计数
@@ -124,7 +124,8 @@ def process_single_row(row):
         t90 = ensure_chw(tifffile.imread(t90_path))
         t180 = ensure_chw(tifffile.imread(t180_path))
         full_mask = tifffile.imread(mask_path)
-    except Exception:
+    except Exception as e:
+        print(f"[READ ERROR] {plume_id}: {e}")
         return []
 
     if full_mask.shape != (CHIP_SIZE_PX, CHIP_SIZE_PX):
