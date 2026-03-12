@@ -1,0 +1,103 @@
+digraph Panopticon_EMIT {
+	compound=true dpi=300 nodesep=0.35 rankdir=TB ranksep=0.5
+	node [fontname=Arial fontsize=12 shape=box style="filled,rounded"]
+	edge [fontname=Arial fontsize=10]
+	subgraph cluster_input {
+		fontcolor="#444444" label="I. Sensor-Specific Input Embedding" style=dashed
+		PE_S2 [label="Sentinel-2
+Input Stem
+(3D Conv + ChnAttn)" fillcolor="#CCEBC5"]
+		PE_L89 [label="Landsat 8/9
+Input Stem
+(3D Conv + ChnAttn)" fillcolor="#B3CDE3"]
+		PE_S5P [label="S5P (TROPOMI)
+Input Stem
+(3D Conv + ChnAttn)" fillcolor="#DECBE4"]
+		PE_EMIT [label="EMIT (Sim. WV-3)
+Input Stem
+(3D Conv + ChnAttn)" fillcolor="#FFF9C4"]
+	}
+	subgraph cluster_backbone {
+		color="#BBBBBB" fillcolor="#F7F7F7" label="II. Shared ViT Backbone with Sensor-Specific Adapters (All 12 Layers)" style=filled
+		Split [label="Input Split" fillcolor=black shape=point width=0.08]
+		Backbone12 [label="12 × Shared NestedTensorBlock
+(ViT Backbone)" fillcolor="#E6E6E6" width=4.2]
+		Sum [label="Fusion
+(+)" fillcolor="#D9F2D9" shape=circle width=0.7]
+		Ad_S2 [label="12 × Tiny Adapter
+(S2)" fillcolor="#CCEBC5" style="filled,dashed"]
+		Ad_L89 [label="12 × Tiny Adapter
+(L89)" fillcolor="#B3CDE3" style="filled,dashed"]
+		Ad_S5P [label="12 × Tiny Adapter
+(S5P)" fillcolor="#DECBE4" style="filled,dashed"]
+		Ad_EMIT [label="12 × Tiny Adapter
+(EMIT)" fillcolor="#FFF9C4" style="filled,dashed"]
+		{
+			rank=same
+			Ad_S2
+			Ad_L89
+			Backbone12
+			Ad_S5P
+			Ad_EMIT
+		}
+	}
+	Split -> Backbone12 [weight=10]
+	Backbone12 -> Sum [weight=10]
+	Split -> Ad_S2 [style=dashed]
+	Split -> Ad_L89 [style=dashed]
+	Split -> Ad_S5P [style=dashed]
+	Split -> Ad_EMIT [style=dashed]
+	Ad_S2 -> Sum [style=dashed]
+	Ad_L89 -> Sum [style=dashed]
+	Ad_S5P -> Sum [style=dashed]
+	Ad_EMIT -> Sum [style=dashed]
+	subgraph cluster_heads {
+		fontcolor="#444444" label="III. Sensor-Specific Heads + Overall Head" style=dashed
+		H_S2 [label="Sensor Head
+(S2)" fillcolor="#CCEBC5"]
+		H_L89 [label="Sensor Head
+(L89)" fillcolor="#B3CDE3"]
+		H_S5P [label="Sensor Head
+(S5P)" fillcolor="#DECBE4"]
+		H_EMIT [label="Sensor Head
+(EMIT)" fillcolor="#FFF9C4"]
+		{
+			rank=same
+			H_S2
+			H_L89
+			H_S5P
+			H_EMIT
+		}
+		H_OVERALL [label="Overall Head
+(Aggregated Prediction)" fillcolor="#FFD9B3" width=3.0]
+	}
+	TrainNote [label="IV. Training Schedule
+Epoch 1–4:
+• Train 4 input stems (Conv3D)
+• Train shared ViT backbone
+• Train 4 sensor heads + 1 overall head
+
+From Epoch 5:
+• Freeze shared ViT backbone
+• Train Conv3D + adapters + 4 sensor heads + overall head
+• If one sensor overfits:
+  rollback that sensor branch to its best checkpoint
+  and freeze its Conv3D + adapter + sensor head
+• Overall head remains trainable until the end
+• Stop when all sensor branches are frozen
+  or no validation improvement is observed" color="#C9B458" fillcolor="#FFFDE7" fontsize=10 shape=box style="filled,rounded"]
+	PE_S2 -> Split
+	PE_L89 -> Split
+	PE_S5P -> Split
+	PE_EMIT -> Split
+	Sum -> H_S2
+	Sum -> H_L89
+	Sum -> H_S5P
+	Sum -> H_EMIT
+	H_S2 -> H_OVERALL
+	H_L89 -> H_OVERALL
+	H_S5P -> H_OVERALL
+	H_EMIT -> H_OVERALL
+	Backbone12 -> TrainNote [arrowhead=none style=dotted]
+	H_OVERALL -> TrainNote [arrowhead=none style=dotted]
+}

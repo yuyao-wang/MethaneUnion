@@ -1,0 +1,6 @@
+plume_id,error
+GAO20230821t163453p0000-BZ,Source mask missing: /data2/yuyao/methane_emission/carbon_mapper_data_masks/GAO20230821t163453p0000-BZ/plume.tif
+GAO20230821t163453p0000-CA,Source mask missing: /data2/yuyao/methane_emission/carbon_mapper_data_masks/GAO20230821t163453p0000-CA/plume.tif
+GAO20230821t163453p0000-CE,Source mask missing: /data2/yuyao/methane_emission/carbon_mapper_data_masks/GAO20230821t163453p0000-CE/plume.tif
+GAO20230824t183712p0000-B,'/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/EMIT_simulated_WV3_L2A_60resolution_NOnorm/GAO20230824t183712p0000-B_sim_WV3.tif' not recognized as being in a supported file format.
+emi20250527t073547p05007-A,Source mask missing: /data2/yuyao/methane_emission/carbon_mapper_data_masks/emi20250527t073547p05007-A/plume.tif
