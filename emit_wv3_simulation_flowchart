@@ -1,0 +1,33 @@
+// Physics-Informed Spectral Resampling
+digraph EMIT_to_WV3_Pipeline {
+	rankdir=TB
+	node [color=black fontname="Helvetica,Arial,sans-serif" shape=box style="filled,rounded"]
+	edge [fontname="Helvetica,Arial,sans-serif"]
+	INPUT [label="INPUT:
+Raw EMIT Hyperspectral Cube
+(285 Continuous Bands)" fillcolor="#cfe2f3"]
+	A1 [label="Geospatial Cropping &
+Latitude Filtering" fillcolor="#d1e7dd"]
+	B1 [label="WorldView-3 (WV3) SRF
+(16 Methane-Optimized Bands)" fillcolor="#f8d7da"]
+	B2 [label="Radiometric Bandpass Integration
+(GPU Matrix Multiplication)" fillcolor="#f8d7da"]
+	B_ANNOT [label="Physics-Informed Dimensionality Reduction:
+1. Resolves Multicollinearity
+2. Extracts 2.3μm CH4 Features
+3. Aligns ViT Channel Complexity" color=black fillcolor="#fdfdfe" shape=note style=filled]
+	C1 [label="Radiometric Alignment
+(Percentile Matching)" fillcolor="#fff3cd"]
+	C2 [label="Geospatial Reprojection
+(Local UTM, 60m Grid)" fillcolor="#fff3cd"]
+	OUTPUT [label="OUTPUT:
+Simulated WV3 Multi-spectral
+(16-Band Information Bottleneck)" fillcolor="#cfe2f3"]
+	INPUT -> A1
+	B1 -> B2
+	A1 -> B2 [label=" [Apply SRF]"]
+	B2 -> B_ANNOT [arrowhead=none style=dotted]
+	B2 -> C1
+	C1 -> C2
+	C2 -> OUTPUT
+}

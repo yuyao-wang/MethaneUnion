@@ -1,0 +1,41 @@
+// Processed EMIT Data Flowchart
+digraph EMIT_Pipeline {
+	rankdir=TB
+	node [color=black fontname="Helvetica,Arial,sans-serif" shape=box style="filled,rounded"]
+	edge [fontname="Helvetica,Arial,sans-serif"]
+	INPUT [label="INPUT:
+Raw EMIT Hyperspectral
+Reflectance Cube" fillcolor="#cfe2f3"]
+	A1 [label="Latitude Filtering
+(e.g., arid regions only)" fillcolor="#d1e7dd"]
+	A2 [label="Spatial Cropping
+to Plume Area" fillcolor="#d1e7dd"]
+	B1 [label="Targeted Multi-spectral
+SRFs (16 critical bands)" fillcolor="#f8d7da"]
+	B2 [label="Interpolate SRFs to
+EMIT Wavelengths" fillcolor="#f8d7da"]
+	B3 [label="GPU Matrix Multiplication
+(Bandpass Integration)" fillcolor="#f8d7da"]
+	B_ANNOT [label="Intelligent compression
+into most critical information
+bottlenecks for detection." color=black fillcolor="#fdfdfe" shape=note style=filled]
+	C1 [label="Radiometric Alignment &
+Percentile matching" fillcolor="#fff3cd"]
+	C2 [label="Geospatial Reprojection
+to Local UTM" fillcolor="#fff3cd"]
+	C3 [label="KDTree Resampling
+(60-meter grid)" fillcolor="#fff3cd"]
+	OUTPUT [label="OUTPUT:
+Synthesized EMIT
+16-band GeoTIFF" fillcolor="#cfe2f3"]
+	INPUT -> A1
+	A1 -> A2
+	B1 -> B2
+	B2 -> B3
+	A2 -> B3 [label="[Apply]"]
+	B3 -> B_ANNOT [arrowhead=none style=dotted]
+	B3 -> C1
+	C1 -> C2
+	C2 -> C3
+	C3 -> OUTPUT
+}
