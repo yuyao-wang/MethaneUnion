@@ -82,7 +82,32 @@ def write_mask(path: Path, mask: np.ndarray) -> None:
         dst.write(mask.astype(np.float32), 1)
 
 
-def fix_manifest(manifest_csv: Path, mask_root: Path, dry_run: bool = False, limit: int = 0) -> None:
+def maybe_print_progress(stats: dict[str, int], every: int, plume_id: str = "", out_path: str = "") -> None:
+    if every <= 0 or stats["rows_seen"] % every != 0:
+        return
+    status = (
+        f"[progress] seen={stats['rows_seen']} fixed={stats['rows_fixed']} "
+        f"skip_no_path={stats['rows_skipped_no_path']} "
+        f"skip_no_plume_id={stats['rows_skipped_no_plume_id']} "
+        f"skip_no_source={stats['rows_skipped_no_source_mask']} "
+        f"skip_bad_anchor={stats['rows_skipped_bad_anchor']} "
+        f"skip_bad_offsets={stats['rows_skipped_bad_offsets']} "
+        f"skip_oob={stats['rows_skipped_out_of_bounds']}"
+    )
+    if plume_id:
+        status += f" last_plume_id={plume_id}"
+    if out_path:
+        status += f" last_out={out_path}"
+    print(status, flush=True)
+
+
+def fix_manifest(
+    manifest_csv: Path,
+    mask_root: Path,
+    dry_run: bool = False,
+    limit: int = 0,
+    progress_every: int = 1000,
+) -> None:
     with open(manifest_csv, newline="") as f:
         reader = csv.DictReader(f)
         required_cols = ["plume_id", "anchor_sensor", "dx_anchor_px", "dy_anchor_px", "s2_plume_path"]
@@ -142,6 +167,7 @@ def fix_manifest(manifest_csv: Path, mask_root: Path, dry_run: bool = False, lim
             if not dry_run:
                 write_mask(Path(out_path_str), resized)
             stats["rows_fixed"] += 1
+            maybe_print_progress(stats, progress_every, plume_id=plume_id, out_path=out_path_str)
 
     print(f"manifest: {manifest_csv}")
     for k, v in stats.items():
@@ -156,6 +182,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--mask_root", type=Path, default=MASK_ROOT)
     parser.add_argument("--dry_run", action="store_true")
     parser.add_argument("--limit", type=int, default=0, help="Only process the first N rows for smoke tests.")
+    parser.add_argument(
+        "--progress_every",
+        type=int,
+        default=1000,
+        help="Print a progress line every N processed rows. Set to 0 to disable.",
+    )
     return parser.parse_args()
 
 
@@ -166,4 +198,5 @@ if __name__ == "__main__":
         mask_root=args.mask_root,
         dry_run=args.dry_run,
         limit=max(0, int(args.limit)),
+        progress_every=max(0, int(args.progress_every)),
     )
