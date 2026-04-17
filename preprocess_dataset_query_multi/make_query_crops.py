@@ -61,23 +61,39 @@ def is_path(v: object) -> bool:
     return has_value(v) and Path(str(v)).exists()
 
 
-def parse_valid_sensors(row: Dict[str, str]) -> List[str]:
+def parse_sensor_list(raw: str) -> List[str]:
+    if not raw:
+        return []
+    return [s.strip().lower() for s in raw.split(",") if s.strip()]
+
+
+def parse_valid_sensors(row: Dict[str, str], allowed_sensors: Optional[set[str]] = None) -> List[str]:
     raw = str(row.get("valid_sensors", "") or "")
     sensors = [s.strip().lower() for s in raw.split(";") if s.strip()]
+    if allowed_sensors is not None:
+        sensors = [s for s in sensors if s in allowed_sensors]
     if sensors:
         return sensors
     out = []
     for s in RASTER_SENSORS:
+        if allowed_sensors is not None and s not in allowed_sensors:
+            continue
         spec = SENSOR_COLS[s]
         if all(is_path(row.get(c, "")) for c in spec["image"]) and is_path(row.get(spec["mask"], "")):
             out.append(s)
-    if all(is_path(row.get(c, "")) for c in ["S5p_path", "s5p_minus90_path", "s5p_minus360_path"]):
+    if (allowed_sensors is None or "s5p" in allowed_sensors) and all(is_path(row.get(c, "")) for c in ["S5p_path", "s5p_minus90_path", "s5p_minus360_path"]):
         out.append("s5p")
     return out
 
 
 def query_patch_size_px(query_size_m: float, sensor: str) -> int:
     return max(1, int(round(query_size_m / GSD[sensor])))
+
+
+def patch_size_px(query_size_m: float, sensor: str, legacy_patch_sizes: bool = False) -> int:
+    if legacy_patch_sizes:
+        return {"s2": 32, "l89": 16, "emit": 16, "s5p": 3}[sensor]
+    return query_patch_size_px(query_size_m, sensor)
 
 
 def target_size_from_query(query_size_m: float, cap: int = 518) -> int:
@@ -335,7 +351,7 @@ class S5PBundle:
     nearest_ix: int
 
 
-def load_raster_bundle(row: Dict[str, str], sensor: str, query_size_m: float) -> Optional[RasterBundle]:
+def load_raster_bundle(row: Dict[str, str], sensor: str, query_size_m: float, legacy_patch_sizes: bool = False) -> Optional[RasterBundle]:
     spec = SENSOR_COLS[sensor]
     try:
         paths = [Path(str(row[c])) for c in spec["image"]]
@@ -348,7 +364,7 @@ def load_raster_bundle(row: Dict[str, str], sensor: str, query_size_m: float) ->
             t90=read_raster_chw(paths[1]),
             t360=read_raster_chw(paths[2]),
             mask=(read_raster_hw(mpath) > 0).astype(np.uint8),
-            patch_px=query_patch_size_px(query_size_m, sensor),
+            patch_px=patch_size_px(query_size_m, sensor, legacy_patch_sizes=legacy_patch_sizes),
         )
     except Exception:
         return None
@@ -381,6 +397,7 @@ def check_and_crop_raster(
     dy_m: float,
     label: int,
     target_size: int,
+    strict_mask_check: bool = True,
 ) -> Tuple[bool, Dict[str, np.ndarray], str, int]:
     x, y = sensor_top_left(dx_m, dy_m, bundle.sensor, bundle.patch_px)
     c0 = crop_chw(bundle.t0, x, y, bundle.patch_px)
@@ -398,10 +415,11 @@ def check_and_crop_raster(
         return False, {}, "quality_fail", int(cm.sum())
 
     pos_pixels = int((cm > 0).sum())
-    if label == 1 and pos_pixels <= 0:
-        return False, {}, "positive_mask_empty", pos_pixels
-    if label == 0 and pos_pixels > 0:
-        return False, {}, "negative_mask_nonzero", pos_pixels
+    if strict_mask_check:
+        if label == 1 and pos_pixels <= 0:
+            return False, {}, "positive_mask_empty", pos_pixels
+        if label == 0 and pos_pixels > 0:
+            return False, {}, "negative_mask_nonzero", pos_pixels
 
     return True, {
         "0": resize_chw_linear(c0, target_size),
@@ -463,6 +481,7 @@ def try_make_sample(
     out_root: Path,
     counter: IdCounter,
     debug_stats: Counter,
+    strict_mask_check: bool,
 ) -> Optional[Dict[str, object]]:
     dx_m = dx_anchor_px * GSD[anchor]
     dy_m = dy_anchor_px * GSD[anchor]
@@ -470,7 +489,7 @@ def try_make_sample(
     mask_counts: Dict[str, int] = {}
 
     for sensor, bundle in raster_bundles.items():
-        ok, crops, reason, pos_pixels = check_and_crop_raster(bundle, dx_m, dy_m, label, target_size)
+        ok, crops, reason, pos_pixels = check_and_crop_raster(bundle, dx_m, dy_m, label, target_size, strict_mask_check=strict_mask_check)
         if not ok:
             debug_stats[f"{sensor}_{reason}_label{label}"] += 1
             return None
@@ -517,12 +536,13 @@ def try_make_sample(
 
 def process_row(row: Dict[str, str], args, counter: IdCounter) -> Tuple[List[Dict[str, object]], Dict[str, int]]:
     local_stats: Counter = Counter()
-    valid_sensors = parse_valid_sensors(row)
+    allowed = set(parse_sensor_list(args.sensors)) if args.sensors else None
+    valid_sensors = parse_valid_sensors(row, allowed_sensors=allowed)
     raster_sensors = [s for s in RASTER_SENSORS if s in valid_sensors]
     raster_bundles = {
         s: b
         for s in raster_sensors
-        if (b := load_raster_bundle(row, s, args.query_size_m)) is not None
+        if (b := load_raster_bundle(row, s, args.query_size_m, legacy_patch_sizes=args.legacy_patch_sizes)) is not None
     }
     s5p_bundle = load_s5p_bundle(row) if "s5p" in valid_sensors else None
     loaded = list(raster_bundles.keys()) + (["s5p"] if s5p_bundle is not None else [])
@@ -531,7 +551,7 @@ def process_row(row: Dict[str, str], args, counter: IdCounter) -> Tuple[List[Dic
         return [], dict(local_stats)
 
     anchor = pick_anchor(loaded)
-    anchor_patch = S5P_PATCH if anchor == "s5p" else query_patch_size_px(args.query_size_m, anchor)
+    anchor_patch = S5P_PATCH if anchor == "s5p" else patch_size_px(args.query_size_m, anchor, legacy_patch_sizes=args.legacy_patch_sizes)
     center_box_px = max(1, int(round(args.center_box_m / GSD[anchor])))
     target_size = args.target_size if args.target_size > 0 else target_size_from_query(args.query_size_m, args.target_cap)
 
@@ -558,6 +578,7 @@ def process_row(row: Dict[str, str], args, counter: IdCounter) -> Tuple[List[Dic
                 out_root=args.out_root,
                 counter=counter,
                 debug_stats=local_stats,
+                strict_mask_check=not args.disable_strict_mask_check,
             )
             if rec is None:
                 continue
@@ -605,6 +626,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--target_size", type=int, default=0, help="0 means auto from S2 crop size.")
     p.add_argument("--target_cap", type=int, default=518)
     p.add_argument("--center_box_m", type=float, default=100.0, help="Old-pipeline center box, converted to anchor pixels.")
+    p.add_argument("--sensors", type=str, default="", help="Comma-separated subset, e.g. s2 or s2,l89,emit,s5p.")
+    p.add_argument("--legacy_patch_sizes", action="store_true", help="Use old crop.py patch sizes: s2=32,l89=16,emit=16,s5p=3.")
+    p.add_argument("--disable_strict_mask_check", action="store_true", help="Do not reject positive/negative candidates by mask content.")
     p.add_argument("--n_pos", type=int, default=16)
     p.add_argument("--n_neg", type=int, default=16)
     p.add_argument("--max_attempts_pos", type=int, default=800)

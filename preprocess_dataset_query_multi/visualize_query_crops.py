@@ -10,6 +10,11 @@ from common import has_value, normalize_rgb, overlay_mask, read_csv_rows, resize
 
 
 SENSORS = ("s2", "l89", "emit", "s5p")
+LEGACY_MASK_COLS = {
+    "s2": "s2_plume_path",
+    "l89": "l89_plume_path",
+    "emit": "emit_plume_path",
+}
 
 
 def path_exists(row: Dict[str, str], col: str) -> bool:
@@ -33,6 +38,9 @@ def sensor_panel(row: Dict[str, str], sensor: str, tile_size: int) -> np.ndarray
     rgb = normalize_rgb(read_chw(Path(str(row[image_col]))))
     if sensor != "s5p" and path_exists(row, f"{sensor}_mask_path"):
         mask = read_hw(Path(str(row[f"{sensor}_mask_path"])))
+        rgb = overlay_mask(rgb, mask)
+    elif sensor != "s5p" and sensor in LEGACY_MASK_COLS and path_exists(row, LEGACY_MASK_COLS[sensor]):
+        mask = read_hw(Path(str(row[LEGACY_MASK_COLS[sensor]])))
         rgb = overlay_mask(rgb, mask)
     return resize_nearest(rgb, tile_size, tile_size)
 
