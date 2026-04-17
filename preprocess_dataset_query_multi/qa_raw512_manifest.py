@@ -165,6 +165,10 @@ def check_row(row: Dict[str, str]) -> Tuple[Dict[str, str], list[Dict[str, objec
     return out, qa_rows, dict(stats)
 
 
+def row_signature(row: Dict[str, object], fields: list[str]) -> Tuple[str, ...]:
+    return tuple(str(row.get(f, "")) for f in fields)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="QA raw512 image/mask manifest and write a clean manifest.")
     p.add_argument("--manifest_csv", type=Path, required=True)
@@ -172,6 +176,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--qa_csv", type=Path, required=True)
     p.add_argument("--workers", type=int, default=12)
     p.add_argument("--limit", type=int, default=0)
+    p.add_argument(
+        "--clean_keep_mode",
+        type=str,
+        default="query_source_ok",
+        choices=["query_source_ok", "raster_only"],
+        help=(
+            "query_source_ok: keep rows with at least one valid sensor (including S5P-only); "
+            "raster_only: keep rows with at least one valid raster sensor (legacy behavior)."
+        ),
+    )
+    p.add_argument(
+        "--merge_into_existing_clean",
+        action="store_true",
+        help=(
+            "If clean_csv already exists, append only newly qualified rows and keep existing row order."
+        ),
+    )
     return p.parse_args()
 
 
@@ -188,12 +209,34 @@ def main() -> None:
         for i, (out_row, row_qa, local_stats) in enumerate(ex.map(check_row, rows), start=1):
             stats.update(local_stats)
             qa_rows.extend(row_qa)
-            if out_row["raw512_ok"]:
+            keep = bool(out_row["query_source_ok"]) if args.clean_keep_mode == "query_source_ok" else bool(out_row["raw512_ok"])
+            if keep:
                 clean_rows.append(out_row)
             if i % 1000 == 0 or i == len(rows):
                 print(f"[progress] qa_rows={i}/{len(rows)} clean={len(clean_rows)}", flush=True)
 
-    clean_fields = list(fieldnames)
+    if args.merge_into_existing_clean and args.clean_csv.exists():
+        existing_fields, existing_rows = read_csv_rows(args.clean_csv)
+        seen = {row_signature(r, fieldnames) for r in existing_rows}
+        merged_rows = list(existing_rows)
+        added = 0
+        skipped = 0
+        for r in clean_rows:
+            sig = row_signature(r, fieldnames)
+            if sig in seen:
+                skipped += 1
+                continue
+            seen.add(sig)
+            merged_rows.append(r)
+            added += 1
+        clean_rows = merged_rows
+        stats["clean_existing_rows"] = len(existing_rows)
+        stats["clean_added_rows"] = added
+        stats["clean_skipped_existing"] = skipped
+        clean_fields = list(existing_fields)
+    else:
+        clean_fields = list(fieldnames)
+
     for c in ["valid_raster_sensors", "valid_s5p", "valid_sensors", "num_valid_sensors", "raw512_ok", "query_source_ok"]:
         if c not in clean_fields:
             clean_fields.append(c)
