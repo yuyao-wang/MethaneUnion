@@ -43,20 +43,25 @@
 #   --stage_wait_sec 2
 
 #[config] {'target_size': 224, 'n_pos': 16, 'n_neg': 16, 'center_box_px': 10, 'patch_size': {'s2': 36, 'l89': 12, 'emit': 6, 's5p': 3}, 's5p_stack_output': True}
-python preprocess_dataset_query_multi/crop_legacy_param.py \
-  --master_csv /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/raw512/manifest_raw512_clean.csv \
-  --out_root /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/legacy_param_120m/crops \
-  --out_csv /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/legacy_param_120m/manifest.csv \
-  --query_size_m 120 \
-  --target_size 224 \
-  --n_pos 16 \
-  --n_neg 16 \
-  --center_box_px 10 \
-  --s5p_stack_output \
-  --workers 8 \
-  --debug \
-  --debug_every 20 \
-  --resume
+# python preprocess_dataset_query_multi/crop_legacy_param.py \
+#   --master_csv /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/raw512/manifest_raw512_clean.csv \
+#   --out_root /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/legacy_param_120m/crops \
+#   --out_csv /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/legacy_param_120m/manifest.csv \
+#   --query_size_m 120 \
+#   --target_size 224 \
+#   --n_pos 16 \
+#   --n_neg 16 \
+#   --center_box_px 10 \
+#   --workers 20 \
+#   --debug \
+#   --debug_every 20 \
+#   --resume
+
+python preprocess_dataset_query_multi/patch_s5p_tif_to_npz.py \
+  --manifest /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/legacy_param_360m/manifest.csv \
+  --inplace \
+  --delete_tif \
+  --strict
 
 # python preprocess_dataset_query_multi/visualize_query_crops.py \
 #   --manifest_csv /mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/finalDataset_query/query_120m/manifest_query_120m_smoke.csv \

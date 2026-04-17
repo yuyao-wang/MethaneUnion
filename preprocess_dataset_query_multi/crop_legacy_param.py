@@ -742,22 +742,32 @@ def write_sensor_files(sample_dir: Path, sensor: str, c0, c90, c360, cmask) -> D
     return paths
 
 
-def write_s5p_stack_file(sample_dir: Path, c0, c90, c360, cmask) -> Dict[str, str]:
-    """Write S5P in the patched format used by fill_s5p_aligned_into_manifest.py.
+def s5p_triplet_stack(c0, c90, c360) -> np.ndarray:
+    return np.stack([c0.squeeze(0), c90.squeeze(0), c360.squeeze(0)], axis=0).astype(np.float32)
 
-    The patched manifest stores all three S5P timepoints as a 3-band stack at
-    s5p_0_path and leaves s5p_90_path/s5p_360_path empty.
+
+def write_s5p_npz_file(sample_dir: Path, row: pd.Series, label: int, c0, c90, c360, cmask) -> Dict[str, str]:
+    """Write S5P in the current training-manifest format.
+
+    The active old training manifests store one npz at s5p_0_path. The npz
+    contains ch4 with shape (3, target_size, target_size); 90/360/plume paths
+    are left empty.
     """
     paths: Dict[str, str] = {}
-    p0 = sample_dir / "s5p_0.tif"
-    pm = sample_dir / "s5p_plume.tif"
-    stack = np.stack([c0.squeeze(0), c90.squeeze(0), c360.squeeze(0)], axis=0).astype(np.float32)
-    tifffile.imwrite(str(p0), stack)
-    tifffile.imwrite(str(pm), cmask)
+    p0 = sample_dir / "s5p_0.npz"
+    stack = s5p_triplet_stack(c0, c90, c360)
+    meta = {
+        "plume_id": str(row.get("plume_id", "")),
+        "label": int(label),
+        "format": "s5p_triplet_npz",
+        "channels": ["t0", "t_minus90", "t_minus360"],
+        "target_size": int(TARGET_SIZE),
+    }
+    np.savez_compressed(str(p0), ch4=stack, meta=np.array(meta, dtype=object))
     paths["s5p_0_path"] = str(p0)
     paths["s5p_90_path"] = pd.NA
     paths["s5p_360_path"] = pd.NA
-    paths["s5p_plume_path"] = str(pm)
+    paths["s5p_plume_path"] = pd.NA
     return paths
 
 
@@ -867,8 +877,8 @@ def process_row(row: pd.Series, counter: Counter) -> Tuple[List[Dict], Dict[str,
                 c360 = resize_chw(c360_raw, TARGET_SIZE)
                 cm = resize_hw(m_raw, TARGET_SIZE)
 
-            if sensor == "s5p" and getattr(process_row, "s5p_stack_output", False):
-                rec.update(write_s5p_stack_file(sample_dir, c0, c90, c360, cm))
+            if sensor == "s5p":
+                rec.update(write_s5p_npz_file(sample_dir, row, int(label), c0, c90, c360, cm))
             else:
                 rec.update(write_sensor_files(sample_dir, sensor, c0, c90, c360, cm))
 
@@ -912,7 +922,6 @@ def run(args):
         }
     save_every = max(1, int(args.save_every))
     resume_state_path = Path(args.resume_state) if args.resume_state is not None else Path(f"{args.out_csv}.resume_state.json")
-    process_row.s5p_stack_output = bool(args.s5p_stack_output)
     read_s5p.report_fail = bool(args.log_s5p_fail)
     load_row_sensors.report_s5p_fail = bool(args.log_s5p_fail)
 
@@ -924,7 +933,7 @@ def run(args):
             "n_neg": N_NEG,
             "center_box_px": CENTER_BOX,
             "patch_size": PATCH_SIZE,
-            "s5p_stack_output": bool(args.s5p_stack_output),
+            "s5p_output": "npz_ch4_triplet",
             "log_s5p_fail": bool(args.log_s5p_fail),
             "save_every": save_every,
             "resume_state": str(resume_state_path),
@@ -1067,7 +1076,6 @@ def parse_args():
     p.add_argument("--n_pos", type=int, default=N_POS, help="Positive samples per plume. Default keeps legacy 16.")
     p.add_argument("--n_neg", type=int, default=N_NEG, help="Negative samples per plume. Default keeps legacy 16.")
     p.add_argument("--center_box_px", type=int, default=CENTER_BOX, help="Legacy center exclusion box in anchor pixels. Default keeps legacy 10.")
-    p.add_argument("--s5p_stack_output", action="store_true", help="Use patched S5P output: 3-band stack in s5p_0_path and empty s5p_90/s5p_360.")
     p.add_argument("--workers", type=int, default=8)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--max_rows", type=int, default=0, help="for quick smoke test")
