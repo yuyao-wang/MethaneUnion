@@ -35,20 +35,20 @@ class ResNet3D(nn.Module):
     def __init__(self, block, layers, input_channel, num_classes=1000, image_size = 128):
         super(ResNet3D, self).__init__()
         self.in_planes = 64
-        self.conv1 = nn.Conv3d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 输入通道数是10
+        self.conv1 = nn.Conv3d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Translated comment
         self.bn1 = nn.BatchNorm3d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
 
-        # 构建4个残差层
+        # Translated comment
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
-        # 自适应全局池化层
+        # Translated comment
         self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
-        # 全连接层输出类别数
+        # Translated comment
         self.fc = nn.Linear(512 * block.expansion, num_classes)
         self.input_channel = input_channel
         self.image_size = image_size
@@ -92,7 +92,7 @@ def resnet3d_18(input_channel = 10, num_classes=1000, image_size = 128):
 
 def resnet3d_34(input_channel = 10, num_classes=1000, image_size = 128):
     return ResNet3D(BasicBlock3D, [3, 4, 6, 3], input_channel = input_channel, num_classes=num_classes, image_size = image_size)
-# model = resnet3d_18(num_classes=10)  # 假设有10个分类
-# input_data = torch.randn(1, 10, 3, 128, 128)  # 随机生成一个输入张量
+# Translated comment
+# Translated comment
 # output = model(input_data)
-# print(output.shape)  # 输出结果
+# print(output.shape)  # outputresult

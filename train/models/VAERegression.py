@@ -11,10 +11,10 @@ class CVAERegression(nn.Module):
     def __init__(self, input_channel, latent_dim):
         super(CVAERegression, self).__init__()
         self.latent_dim = latent_dim
-        # 数值输入的嵌入层
+        # Translated comment
         self.value_embedding = nn.Linear(1, 1024)
         
-        # 条件网络部分（处理图像）
+        # Translated comment
         self.condition_network = nn.Sequential(
             nn.Conv2d(input_channel, 16, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(16),

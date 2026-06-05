@@ -32,7 +32,7 @@ from landsat_stac_utils import (
     item_scene_id,
 )
 
-# 全局设置
+# Translated comment
 WINDOW_SIZE = 512
 # L8_PLUME_BASE_DIR = "/data2/yuyao/methane_emission/landsat_l2sp_plume_stacks"
 base_dir = '/data2/yuyao/methane_emission/carbonmapper_data_l89_l2sp'
@@ -112,8 +112,7 @@ def crop_band_to_window(tif_path: str, plume_bounds: List[float]) -> Optional[np
 
 def parse_landsat_mtl(mtl_path: str) -> Dict[str, Optional[float]]:
     """
-    解析 MTL.txt 中我们关心的字段：
-      - DATE_ACQUIRED + SCENE_CENTER_TIME -> acq_datetime_iso
+ MTL.txt :       - DATE_ACQUIRED + SCENE_CENTER_TIME -> acq_datetime_iso
       - SUN_AZIMUTH, SUN_ELEVATION
       - IMAGE_QUALITY_OLI, IMAGE_QUALITY_TIRS
     """
@@ -189,7 +188,7 @@ def build_landsat_stack_for_plume(
     out_tif_path: str,
 ) -> Optional[Dict[str, int]]:
     """
-    从 scene_dir 中读取 SR_B1-7 + ST_B10，裁剪 WINDOW_SIZE × WINDOW_SIZE，并 stack 成 [8,H,W]。
+ scene_dir load SR_B1-7 + ST_B10, WINDOW_SIZE x WINDOW_SIZE, stack [8,H,W].
     """
     band_suffixes = [f"SR_B{b}" for b in range(1, 8)] + ["ST_B10"]
 
@@ -234,10 +233,8 @@ def process_single_landsat_scene(
     download_scene: bool = True,
 ) -> Optional[Dict[str, object]]:
     """
-    对单个场景：
-      1. download_landsat_scene 到 landsat_raw_root/scene_id
-      2. parse MTL 取时间 / 太阳角 / 质量
-      3. 裁剪 stack 写到 plume_dir
+ :  1. download_landsat_scene landsat_raw_root/scene_id
+ 2. parse MTL time / /  3. stack plume_dir
     """
     product_id = normalize_scene_id(scene_id)
     if download_scene:
@@ -301,11 +298,9 @@ def update_global_progress(tracker):
 
 def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_scenes=3):
     """
-    针对单个 plume：
-    - 用 LandsatLook STAC 搜索 L8/L9 C2 L2 场景
-    - 选出最多 max_scenes 个离事件时间最近的
-    - 调用 download_landsat_scene 下载原始 L8 包到 raw_data_dir
-    - 返回简单的 meta 给主线程写 CSV
+ plume:  - LandsatLook STAC L8/L9 C2 L2  - max_scenes time
+ - download_landsat_scene download L8 raw_data_dir
+ - meta worker CSV
     """
     plume_id = str(row_data.get('plume_id', 'unknown'))
     plume_dir = os.path.join(base_dir, plume_id)
@@ -323,17 +318,17 @@ def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_sc
 
         event_dt = event_dt.astimezone(timezone.utc)
 
-        # 时间窗口：前后 7 天（你可以保持和 S2 一致）
+        # Translated comment
         window_start = event_dt - timedelta(days=7)
         window_end = event_dt + timedelta(days=7)
 
-        # --- Step 1: STAC 搜索 ---
+        # Translated comment
         items = fetch_landsat_items(plume_bounds, window_start, window_end)
         if not items:
             print(f"[info] plume {plume_id}: no L8/L9 scenes found in STAC")
             return {'index': row_index, 'selected_scenes': [], 'has_same_day_l8': 0}
 
-        # 仅保留云量低于阈值的场景
+        # Translated comment
         low_cloud_items = [
             item for item in items
             if item.get("cloud_cover") is not None and item["cloud_cover"] < MAX_CLOUD_COVER_PERCENT
@@ -342,12 +337,12 @@ def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_sc
             print(f"[info] plume {plume_id}: no low-cloud (<{MAX_CLOUD_COVER_PERCENT}%) scenes available")
             return {'index': row_index, 'selected_scenes': [], 'has_same_day_l8': 0}
 
-        # --- Step 2: 选场景 ---
+        # Translated comment
         selected_items = select_landsat_items(low_cloud_items, event_dt, max_scenes=max_scenes)
         has_same_day = 1 if any(it["acq_time"].date() == event_dt.date() for it in selected_items) else 0
 
-        # --- Step 3: 下载原始 L8 包 ---
-        out_root = config['raw_data_dir_l8']  # 建议在 config 里单独加一个 raw_data_dir_l8
+        # Translated comment
+        out_root = config['raw_data_dir_l8']  # Translated comment
         os.makedirs(out_root, exist_ok=True)
         os.makedirs(plume_dir, exist_ok=True)
 
@@ -358,7 +353,7 @@ def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_sc
             product_id = normalize_scene_id(scene_id)
             acq_time = it["acq_time"]
 
-            # 调用你前面写的 boto3 版本 downloader
+            # Translated comment
             try:
                 download_landsat_scene(scene_id, out_root)
             except KeyboardInterrupt:
@@ -367,10 +362,10 @@ def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_sc
                 print(f"[error] plume {plume_id}: download scene {scene_id} failed: {exc}")
                 continue
 
-            # 这里先只记录 scene_id + acq_time + 本地路径
-            # 后面你可以在单独的 L8 处理脚本里：
-            #   - 遍历 scene 文件夹，合成 multi-band tif
-            #   - 解析 MTL.txt 拿 SUN_AZIMUTH / SUN_ELEVATION / IMAGE_QUALITY_* 等
+            # Translated comment
+            # Translated comment
+            # Translated comment
+            # Translated comment
             try:
                 scene_info = process_single_landsat_scene(
                     scene_id,
@@ -394,7 +389,7 @@ def download_task_l8(row_index, row_data, plume_bounds, progress_tracker, max_sc
             recorded_scenes.append(scene_info)
 
         if recorded_scenes:
-            # 写 plume 层面的 completion marker
+            # Translated comment
             with open(plume_marker_file, 'w') as f:
                 f.write(datetime_to_iso_z(datetime.now(timezone.utc)))
 
@@ -426,7 +421,7 @@ if __name__ == "__main__":
 
     df = pd.read_csv(merged_csv_path)
 
-    # 新增 L8 列
+    # Translated comment
     new_cols = []
     for i in range(1, MAX_L8_PER_PLUME + 1):
         new_cols.extend([
@@ -444,7 +439,7 @@ if __name__ == "__main__":
         if col not in df.columns:
             df[col] = ""
 
-    # 只处理有 plume_tif 的行
+    # Translated comment
     plume_tif_mask = df["plume_tif"].apply(lambda v: isinstance(v, str) and len(v) > 0)
     processable_mask = plume_tif_mask
 
@@ -489,7 +484,7 @@ if __name__ == "__main__":
     if progress_bar is not None:
         progress_bar.close()
 
-    # 写回 CSV
+    # Translated comment
     for res in results:
         if res is None:
             continue

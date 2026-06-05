@@ -6,7 +6,7 @@ class PANDA(nn.Module):
         super(PANDA, self).__init__()
         self.features = nn.Sequential(*list(original_model.backbone.children())[:-2])
         self.fc1 = nn.Linear(512 * 6 * 6, 512)
-        self.fc2 = nn.Linear(512, 1)  # 修改全连接层以适应二分类问题
+        self.fc2 = nn.Linear(512, 1)  # Translated comment
         self.prototype = nn.Parameter(torch.randn(512))
 
         # self.features[0] = nn.Conv2d(18, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)

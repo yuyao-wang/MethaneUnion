@@ -130,7 +130,7 @@ class GroupConv3D(nn.Module):
 
         self.post_conv3d = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=(3, 3, 3), padding=(1, 1, 1))
         
-        # 汇总卷积层
+        # Translated comment
         self.final_conv = nn.Conv2d(group_out_channels * 9, final_out_channels, kernel_size=3, padding=1)
         # self.final_conv = nn.Identity()
 
@@ -151,7 +151,7 @@ class GroupConv3D(nn.Module):
         group8 = x[:, 25:26, :, :]
         group9 = x[:, 26:27, :, :]
         
-        # 分别应用卷积
+        # Translated comment
         out1 = self.conv1(group1)
         out2 = self.conv2(group2)
         out3 = self.conv3(group3)
@@ -211,25 +211,25 @@ class UNetSimple(nn.Module):
     def __init__(self, n_channels, n_classes):
         super(UNetSimple, self).__init__()
         
-        # 编码部分 (两次下采样)
-        self.inc = DoubleConv(n_channels, 64)  # 输入卷积
-        self.down1 = nn.MaxPool2d(2)           # 第一次下采样
-        self.conv1 = DoubleConv(64, 128)       # 卷积
+        # Translated comment
+        self.inc = DoubleConv(n_channels, 64)  # inputconvolution
+        self.down1 = nn.MaxPool2d(2)  # Translated comment
+        self.conv1 = DoubleConv(64, 128)       # convolution
 
-        self.down2 = nn.MaxPool2d(2)           # 第二次下采样
-        self.conv2 = DoubleConv(128, 256)      # 卷积
+        self.down2 = nn.MaxPool2d(2)  # Translated comment
+        self.conv2 = DoubleConv(128, 256)      # convolution
 
-        # 解码部分 (上采样)
-        self.up1 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)  # 第一次上采样
-        self.conv3 = DoubleConv(256, 128)  # 合并卷积
+        # Translated comment
+        self.up1 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)  # Translated comment
+        self.conv3 = DoubleConv(256, 128)  # Translated comment
 
-        self.up2 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)   # 第二次上采样
-        self.conv4 = DoubleConv(128, 64)   # 合并卷积
+        self.up2 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)  # Translated comment
+        self.conv4 = DoubleConv(128, 64)  # Translated comment
 
-        self.outc = nn.Conv2d(64, n_classes, kernel_size=1)  # 输出层
+        self.outc = nn.Conv2d(64, n_classes, kernel_size=1)  # outputlayer
 
     def forward(self, x):
-        # 编码路径
+        # Translated comment
         x1 = self.inc(x)       # (batch, 64, 32, 32)
         x2 = self.down1(x1)    # (batch, 64, 16, 16)
         x2 = self.conv1(x2)    # (batch, 128, 16, 16)
@@ -237,13 +237,13 @@ class UNetSimple(nn.Module):
         x3 = self.down2(x2)    # (batch, 128, 8, 8)
         x3 = self.conv2(x3)    # (batch, 256, 8, 8)
 
-        # 解码路径
+        # Translated comment
         x = self.up1(x3)       # (batch, 128, 16, 16)
-        x = torch.cat([x2, x], dim=1)  # 跳跃连接 (skip connection)
+        x = torch.cat([x2, x], dim=1)  # Translated comment
         x = self.conv3(x)      # (batch, 128, 16, 16)
 
         x = self.up2(x)        # (batch, 64, 32, 32)
-        x = torch.cat([x1, x], dim=1)  # 跳跃连接 (skip connection)
+        x = torch.cat([x1, x], dim=1)  # Translated comment
         x = self.conv4(x)      # (batch, 64, 32, 32)
 
         logits = self.outc(x)  # (batch, n_classes, 32, 32)

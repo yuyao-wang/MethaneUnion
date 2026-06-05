@@ -129,7 +129,7 @@ class FcaBasicBlock(nn.Module):
                  base_width=64, dilation=1, norm_layer=None,
                  *, reduction=16):
         super(FcaBasicBlock, self).__init__()
-        # 根据输入尺寸 128x128 重新计算后的 c2wh
+        # Translated comment
         c2wh = dict([(64, 64), (128, 32), (256, 16), (512, 8)])
         self.planes = planes
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -168,7 +168,7 @@ class FcaBasicBlock(nn.Module):
 #     """
 #     model = ResNet(FcaBasicBlock, [2, 2, 2, 2], num_classes=num_classes)
     
-#     # 修改第一层的输入通道数，适应 (10, 128, 128) 的输入
+# Translated comment
 #     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
 #     model.bn1 = nn.BatchNorm2d(64)
 #     model.relu = nn.ReLU(inplace=True)
@@ -181,7 +181,7 @@ class ResNet(nn.Module):
     def __init__(self, block, layers, num_classes=1000):
         super(ResNet, self).__init__()
         self.inplanes = 64
-        self.conv1 = nn.Conv2d(10, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 输入通道为 10
+        self.conv1 = nn.Conv2d(10, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Translated comment
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -209,24 +209,24 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # 第一部分的特征提取
+        # Translated comment
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        # 各层的特征提取
+        # Translated comment
         x = self.layer1(x)
-        x = self.layer2(x)  # 假设在 layer2 之后提取特征
+        x = self.layer2(x)  # Translated comment
         x = self.layer3(x)
         feature_map = self.layer4(x)
 
-        # 分类头
+        # Translated comment
         x = self.avgpool(feature_map)
         x = torch.flatten(x, 1)
         logits = self.fc(x)
 
-        # 返回特征和分类结果
+        # Translated comment
         return logits
 
 def fcanet18(num_classes=1000, input_channel=10, pretrained=False):
@@ -236,7 +236,7 @@ def fcanet18(num_classes=1000, input_channel=10, pretrained=False):
     """
     model = ResNet(FcaBasicBlock, [2, 2, 2, 2], num_classes=num_classes)
     
-    # 修改第一层的输入通道数，适应 (10, 128, 128) 的输入
+    # Translated comment
     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
     model.bn1 = nn.BatchNorm2d(64)
     model.relu = nn.ReLU(inplace=True)
@@ -252,7 +252,7 @@ def fcanet34(num_classes=1000, input_channel=10, pretrained=False):
     """
     model = ResNet(FcaBasicBlock, [3, 4, 6, 3], num_classes=num_classes)
     
-    # 修改第一层的输入通道数，适应 (10, 128, 128) 的输入
+    # Translated comment
     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
     model.bn1 = nn.BatchNorm2d(64)
     model.relu = nn.ReLU(inplace=True)

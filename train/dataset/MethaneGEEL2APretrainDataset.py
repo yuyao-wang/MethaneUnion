@@ -161,7 +161,7 @@ class RandomFlip:
         if random.random() < self.horizontal_prob:
             image_array = np.flip(image_array, axis=2)
         
-        # 随机垂直翻转
+        # Translated comment
         if random.random() < self.vertical_prob:
             image_array = np.flip(image_array, axis=1)
         

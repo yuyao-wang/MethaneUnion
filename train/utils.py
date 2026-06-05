@@ -34,14 +34,14 @@ def set_all_seeds(seed):
 
 def mean_squared_error(y_true, y_pred):
     """
-    计算MSE
+ MSE
     """
     mse = np.mean((y_true - y_pred) ** 2)
     return mse
 
 def r_squared(y_true, y_pred):
     """
-    计算R平方
+ R
     """
     ss_res = np.sum((y_true - y_pred) ** 2)
     ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)
@@ -50,8 +50,7 @@ def r_squared(y_true, y_pred):
 
 def explained_variance_score(y_true, y_pred):
     """
-    计算解释方差分数
-    """
+     """
     var_res = np.var(y_true - y_pred)
     var_tot = np.var(y_true)
     explained_variance = 1 - (var_res / var_tot)
@@ -59,19 +58,19 @@ def explained_variance_score(y_true, y_pred):
 
 def custom_accuracy(y_true, y_pred, threshold=0.01):
     """
-    计算自定义准确率。
-    y_pred: 预测值，tensor
-    y_true: 真实值，tensor
-    threshold: 阈值百分比，表示允许的误差范围，默认为1%
+ .
+ y_pred: , tensor
+ y_true: , tensor
+ threshold: threshold, , 1%
     """
-    # 计算真实值的上下界
+    # Translated comment
     lower_bound = y_true * (1 - threshold)
     upper_bound = y_true * (1 + threshold)
     
-    # 检查预测值是否在允许的误差范围内
+    # Translated comment
     correct_predictions = (y_pred >= lower_bound) & (y_pred <= upper_bound)
     
-    # 计算在误差范围内的预测值的比例
+    # Translated comment
     accuracy = np.mean(correct_predictions.astype(float))
     
     return accuracy

@@ -86,9 +86,9 @@ def latlon_to_pixel(lat, lon, dataset):
 
 def parse_a_file(file_path, plume_bounds):
     debug(f"parsing jp2 file {file_path}")
-    # 读取 Sentinel-2 JP2 文件
+    # Read the Sentinel-2 JP2 file
     with rasterio.open(file_path) as dataset:
-        # 定义感兴趣区域的经纬度边界
+        # define the latitude/longitude bounds of the region of interest
         # plume_bounds = [-103.54983976823348, 32.06765206888606, -103.54028239690392, 32.07575083506975]
         
         top_left = latlon_to_pixel(plume_bounds[3], plume_bounds[0], dataset)

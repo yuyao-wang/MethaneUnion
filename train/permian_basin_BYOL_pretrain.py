@@ -23,7 +23,7 @@ from utils import load_config, parse_args, set_all_seeds
 torch.autograd.set_detect_anomaly(True)
 mp.set_sharing_strategy("file_system")
 
-# 修改后的ResNet模型，支持12通道输入
+# Translated comment
 class ResNetModified(nn.Module):
     def __init__(self, base_model, num_channels=12):
         super(ResNetModified, self).__init__()
@@ -31,13 +31,13 @@ class ResNetModified(nn.Module):
         # CIFAR-style stem keeps 32x32 chips informative by avoiding early downsampling.
         self.backbone.conv1 = nn.Conv2d(num_channels, 64, kernel_size=3, stride=1, padding=1, bias=False)
         self.backbone.maxpool = nn.Identity()
-        self.backbone.fc = nn.Identity()  # 移除原有的全连接层
+        self.backbone.fc = nn.Identity()  # Translated comment
 
     def forward(self, x):
         x = self.backbone(x)
         return x
 
-# 定义投影头
+# Translated comment
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, hidden_dim=2048, output_dim=256):
         super(ProjectionHead, self).__init__()
@@ -53,7 +53,7 @@ class ProjectionHead(nn.Module):
         x = self.net(x)
         return x
 
-# 定义预测头（BYOL独有）
+# Translated comment
 class PredictionHead(nn.Module):
     def __init__(self, input_dim=256, hidden_dim=512, output_dim=256):
         super(PredictionHead, self).__init__()
@@ -68,24 +68,24 @@ class PredictionHead(nn.Module):
         x = self.net(x)
         return x
 
-# BYOL模型定义
+# Translated comment
 class BYOL(nn.Module):
     def __init__(self, base_encoder, encoder_out_dim = 2048, num_channels=12, hidden_dim=2048, proj_dim=256, pred_dim=256, momentum=0.996):
         super(BYOL, self).__init__()
-        # 在线网络
+        # Translated comment
         self.online_encoder = ResNetModified(base_encoder, num_channels)
         self.online_projector = ProjectionHead(input_dim=encoder_out_dim, hidden_dim=hidden_dim, output_dim=proj_dim)
         self.online_predictor = PredictionHead(input_dim=proj_dim, hidden_dim=hidden_dim, output_dim=pred_dim)
 
-        # 目标网络
+        # Translated comment
         self.target_encoder = ResNetModified(base_encoder, num_channels)
         self.target_projector = ProjectionHead(input_dim=encoder_out_dim, hidden_dim=hidden_dim, output_dim=proj_dim)
 
-        # 初始化目标网络参数
+        # Translated comment
         self._initialize_target_network()
 
         self.base_momentum = momentum
-        self.momentum = momentum  # 动量系数
+        self.momentum = momentum  # Translated comment
 
     def _set_target_eval(self):
         self.target_encoder.eval()
@@ -93,10 +93,10 @@ class BYOL(nn.Module):
 
     @torch.no_grad()
     def _initialize_target_network(self):
-        # 将目标网络参数初始化为在线网络参数
+        # Translated comment
         for param_o, param_t in zip(self.online_encoder.parameters(), self.target_encoder.parameters()):
             param_t.data.copy_(param_o.data)
-            param_t.requires_grad = False  # 目标网络不需要梯度
+            param_t.requires_grad = False  # Translated comment
         for param_o, param_t in zip(self.online_projector.parameters(), self.target_projector.parameters()):
             param_t.data.copy_(param_o.data)
             param_t.requires_grad = False
@@ -104,7 +104,7 @@ class BYOL(nn.Module):
 
     @torch.no_grad()
     def _update_target_network(self):
-        # 更新目标网络参数
+        # Translated comment
         for param_o, param_t in zip(self.online_encoder.parameters(), self.target_encoder.parameters()):
             param_t.data = param_t.data * self.momentum + param_o.data * (1 - self.momentum)
         for param_o, param_t in zip(self.online_projector.parameters(), self.target_projector.parameters()):
@@ -112,17 +112,17 @@ class BYOL(nn.Module):
         self._set_target_eval()
 
     def forward(self, x1, x2):
-        # 在线网络
+        # Translated comment
         q1 = self.online_predictor(self.online_projector(self.online_encoder(x1).flatten(1)))
         q2 = self.online_predictor(self.online_projector(self.online_encoder(x2).flatten(1)))
 
-        # 目标网络（不传梯度）
+        # Translated comment
         with torch.no_grad():
             self._set_target_eval()
             k1 = self.target_projector(self.target_encoder(x1).flatten(1))
             k2 = self.target_projector(self.target_encoder(x2).flatten(1))
 
-        # 计算损失
+        # Translated comment
         loss1 = self.loss_fn(q1, k2)
         loss2 = self.loss_fn(q2, k1)
         loss = loss1 + loss2
@@ -130,7 +130,7 @@ class BYOL(nn.Module):
         return loss
 
     def loss_fn(self, q, k):
-        # BYOL损失函数，使用均方误差
+        # Translated comment
         q = F.normalize(q, dim=-1)
         k = F.normalize(k, dim=-1)
         return 2 - 2 * (q * k).sum(dim=-1).mean()
@@ -173,7 +173,7 @@ if __name__ == '__main__':
         std=s2_std[channel_indices],
     )
 
-    # 定义BYOL模型，使用ResNet18作为基模型
+    # Translated comment
     if config['model'] == 'ResNet18':
         base_encoder = models.resnet18
         model = BYOL(base_encoder=base_encoder, encoder_out_dim = 512, num_channels=len(channel_indices)).to(device)
@@ -217,7 +217,7 @@ if __name__ == '__main__':
         train_loader = DataLoader(train_dataset, shuffle=True, **dataloader_kwargs)
     byol_model = model.module if config['dp'] else model
 
-    # 优化器和学习率调度器
+    # Translated comment
     # optimizer = torch.optim.SGD(model.parameters(), lr=0.003, momentum=0.9, weight_decay=1e-4)
     optimizer = torch.optim.AdamW(model.parameters(), lr=0.001, weight_decay=1e-6)
 
@@ -250,7 +250,7 @@ if __name__ == '__main__':
                 loss.backward()
                 optimizer.step()
 
-                # 更新目标网络参数
+                # Translated comment
                 with torch.no_grad():
                     current_step = epoch * steps_per_epoch + idx
                     byol_model.momentum = byol_model.momentum_tau(current_step, total_steps)

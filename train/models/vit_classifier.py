@@ -15,7 +15,7 @@ class VisionTransformer(nn.Module):
         config.num_hidden_layers = 12
         config.image_size = image_size
         config.num_channels = num_channels
-        config.patch_size = patch_size  # 或者根据您的需求调整
+        config.patch_size = patch_size  # Translated comment
         config.num_labels = num_classes
         config.intermediate_size = intermediate_size
 

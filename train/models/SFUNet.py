@@ -77,16 +77,16 @@ class UNetDecoderBlock(nn.Module):
         super(UNetDecoderBlock, self).__init__()
         self.upconv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
         
-        # 处理输入通道数为 out_channels * 2，因为拼接了 skip_connection
+        # Translated comment
         self.block = UNetBlock(out_channels * 2, out_channels, downsample=False)
 
     def forward(self, x, skip_connection):
         x = self.upconv(x)
         
-        # 拼接 along the channel dimension
+        # Translated comment
         x = torch.cat([x, skip_connection], dim=1)
         
-        # 通过UNet block
+        # Translated comment
         _, x = self.block(x)
         return x
 

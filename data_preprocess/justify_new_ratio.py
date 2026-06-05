@@ -17,10 +17,10 @@ BETA = 0.3
 EPS = 1e-6
 DEBUG_EVENTS = 5
 
-# 缓存 (image_path, mask_path) -> (D_M, D_O)，避免重复 IO 与计算
+# Translated comment
 DMDO_CACHE = {}
 
-# 例子：先用一小批数据跑出 gamma,c，然后手动填这里
+# Translated comment
 GAMMA_S2 = 4.0
 C_S2 = -1.5
 GAMMA_L8 = 3.0
@@ -289,11 +289,11 @@ def compute_MEQR_for_event(
                     )
                 continue
 
-            # 更新该传感器的 max D_M（只看甲烷，可分性）
+            # Translated comment
             if dm_max is None or D_M > dm_max:
                 dm_max = D_M
 
-            # 这一张图的绝对质量 q_i
+            # Translated comment
             T = np.exp(-abs(dt_days) / tau)
             z = alpha * D_M + beta * D_O
             S = sigmoid(z)
@@ -306,7 +306,7 @@ def compute_MEQR_for_event(
         return Q, dm_max
 
     S2_METHANE_BANDS = [11, 12]
-    S2_OTHER_BANDS = [2, 4, 8]  # 背景简化一点就够了
+    S2_OTHER_BANDS = [2, 4, 8]  # Translated comment
 
     L8_METHANE_BANDS = [6, 7]
     L8_OTHER_BANDS = [2, 4, 5]
@@ -345,7 +345,7 @@ def compute_MEQR_for_event(
             f"[DEBUG]{debug_prefix} Q_s2={Q_s2:.4f} Q_l8={Q_l8:.4f} -> MEQR={meqr:.4f}"
         )
 
-    # 额外返回 DM_s2_max / DM_l8_max，用于之后构造 M_s2 / M_l8
+    # Translated comment
     return meqr, Q_s2, Q_l8, DM_s2_max, DM_l8_max
 
 
@@ -508,7 +508,7 @@ def compute_meqr_dataframe():
     df["DM_s2_max"] = dm_s2_max_values
     df["DM_l8_max"] = dm_l8_max_values
 
-    # === per-sensor 归一化，得到 methane-only separability M_s2 / M_l8 ===
+    # Translated comment
     def _normalize_dm(col):
         dm = df[col].to_numpy(dtype=float)
         med = np.nanmedian(dm)
@@ -530,8 +530,8 @@ def compute_meqr_dataframe():
 
 def plot_methane_separability_scatter(df, delta=0.1):
     """
-    用 M_s2 / M_l8（甲烷可分性，传感器内部归一化）看互补关系。
-    灰色区域是以原点为顶点的夹角：M_l8 ∈ [(1-delta)*M_s2, (1+delta)*M_s2]
+ M_s2 / M_l8(, ).
+ : M_l8 ∈ [(1-delta)*M_s2, (1+delta)*M_s2]
     """
     M_s2 = df["M_s2"].values
     M_l8 = df["M_l8"].values
@@ -542,7 +542,7 @@ def plot_methane_separability_scatter(df, delta=0.1):
             dominance.append("undefined")
             continue
 
-        # 相对误差：以 x 为基准，看 y 是否在 [(1-δ)x, (1+δ)x] 之间
+        # Translated comment
         lower = (1.0 - delta) * ms
         upper = (1.0 + delta) * ms
 
@@ -566,7 +566,7 @@ def plot_methane_separability_scatter(df, delta=0.1):
     plt.figure(figsize=(8, 7))
     x = np.linspace(0, 1, 300)
 
-    # 以原点为顶点的夹角区域：y = (1±delta) * x
+    # Translated comment
     y_lower = (1.0 - delta) * x
     y_upper = (1.0 + delta) * x
     y_lower = np.clip(y_lower, 0.0, 1.0)
@@ -594,7 +594,7 @@ def plot_methane_separability_scatter(df, delta=0.1):
             label=dom,
         )
 
-    # 中心对角线 y = x
+    # Translated comment
     plt.plot(x, x, "k--", alpha=0.4)
 
     plt.xlim(0, 1)

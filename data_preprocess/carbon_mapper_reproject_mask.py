@@ -14,13 +14,13 @@ from osgeo import gdal
 
 def reproject_to_sentinel2(src_path, dst_path, target_res=20, target_size=(512, 512)):
     with rasterio.open(src_path) as src:
-        # 计算目标变换和尺寸
+        # Translated comment
         transform, width, height = calculate_default_transform(
             src.crs, src.crs, src.width, src.height, resolution=(target_res, target_res),
             left=src.bounds.left, bottom=src.bounds.bottom, right=src.bounds.right, top=src.bounds.top
         )
         
-        # 更新 profile，设置目标分辨率和尺寸
+        # Translated comment
         profile = src.profile
         profile.update(
             transform=transform,
@@ -29,7 +29,7 @@ def reproject_to_sentinel2(src_path, dst_path, target_res=20, target_size=(512, 
             height=int((src.bounds.top - src.bounds.bottom) / target_res)
         )
 
-        # 创建目标影像
+        # Translated comment
         with rasterio.open(dst_path, 'w', **profile) as dst:
             for i in range(1, src.count + 1):
                 reproject(
@@ -49,34 +49,34 @@ def resize_and_expand_to_512(src_path, dst_path, center_lat, center_lon, target_
                 return
             target_width, target_height = 512, 512
             
-            # 创建一个新的512x512的空图像
+            # Translated comment
             new_data = np.zeros((1, target_height, target_width), dtype='uint8')
             
-            # 读取重投影后的数据
+            # Translated comment
             data = np.zeros((src.count, src.height, src.width), dtype='uint8')
             for i in range(1, src.count + 1):
                 data[i-1] = src.read(i, resampling=Resampling.bilinear)
             
-            # 将数据转换为灰度图像
+            # Translated comment
             gray_data = np.max(data > 0, axis=0).astype('uint8')
 
-            # 投影中心经纬度到 UTM 坐标系
+            # Translated comment
             proj_wgs84 = Proj(init='epsg:4326')
             proj_utm = Proj(src.crs)
             center_x, center_y = transform(proj_wgs84, proj_utm, center_lon, center_lat)
             
-            # 计算中心位置
+            # Translated comment
             center_pixel_x = int((center_x - src.bounds.left) / target_res)
             center_pixel_y = int((src.bounds.top - center_y) / target_res)
 
-            # 计算需要扩充的范围
+            # Translated comment
             start_x = target_width // 2 - center_pixel_x
             start_y = target_height // 2 - center_pixel_y
             
-            # 将重投影后的图像放置在新图像的中心
+            # Translated comment
             new_data[0, start_y:start_y + src.height, start_x:start_x + src.width] = gray_data
             
-            # 更新 profile
+            # Translated comment
             new_transform = Affine(target_res, 0, center_x - (target_width // 2) * target_res,
                                 0, -target_res, center_y + (target_height // 2) * target_res)
             profile = src.profile
@@ -88,7 +88,7 @@ def resize_and_expand_to_512(src_path, dst_path, center_lat, center_lon, target_
                 dtype='uint8'
             )
             
-            # 写入调整大小后的数据
+            # Translated comment
             with rasterio.open(dst_path, 'w', **profile) as dst:
                 dst.write(new_data)
     except Exception as e:

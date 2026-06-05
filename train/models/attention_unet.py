@@ -84,7 +84,7 @@ class AttentionUNet(nn.Module):
         self.Conv_1x1 = nn.Conv2d(64, output_ch, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
-        # 编码器路径
+        # encoderpath
         x1 = self.Conv1(x)
         x2 = self.Maxpool(x1)
         x2 = self.Conv2(x2)
@@ -98,7 +98,7 @@ class AttentionUNet(nn.Module):
         x5 = self.Maxpool(x4)
         x5 = self.Conv5(x5)
 
-        # 解码器路径
+        # decoderpath
         d5 = self.Up5(x5)
         x4 = self.Att5(g=d5, x=x4)
         d5 = torch.cat((x4, d5), dim=1)

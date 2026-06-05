@@ -6,7 +6,7 @@ class FourierTransformBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(FourierTransformBlock, self).__init__()
         self.stride = stride
-        # 对实部和虚部分别进行卷积操作
+        # Translated comment
         self.conv_real = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.conv_imag = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn_real = nn.BatchNorm2d(out_channels)

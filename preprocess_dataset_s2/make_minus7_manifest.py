@@ -16,10 +16,10 @@ RAW_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/data_download/ra
 SEARCH_BACK_DAYS = 15
 CLOUD_COVER_MAX = 20.0
 
-# 仅对已有 S2_path 且文件存在的 plume 做 -7（你之前的逻辑）
+# Translated comment
 BASE_PREFIX = "/data2/yuyao/methane_emission"
 
-MAX_WORKERS = 12  # 只做 catalogue query，可稍大
+MAX_WORKERS = 12  # Translated comment
 REQ_TIMEOUT = 120
 
 # ========= Utils =========
@@ -169,7 +169,7 @@ if __name__ == "__main__":
 
     debug(f"input={len(df)} usable_existing_S2={len(work_df)}")
 
-    # 简单并行
+    # Translated comment
     from concurrent.futures import ThreadPoolExecutor, as_completed
     results = []
     t0 = time.time()

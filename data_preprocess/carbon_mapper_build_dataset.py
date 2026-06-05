@@ -4,11 +4,11 @@ import numpy as np
 import tifffile
 import random
 
-# ===== 超参数 =====
-IMG_SIZE = 512          # 原始大图尺寸
-CENTER_SIZE = 30        # 中心小方块大小（保持不变也可以）
-CROP_SIZE = 96          # ★ 想改 patch 大小，就改这里
-INNER_MARGIN = 128      # ★ 随机裁剪时，离边缘至少留多宽（可以视情况调整）
+# Translated comment
+IMG_SIZE = 512  # Translated comment
+CENTER_SIZE = 30  # Translated comment
+CROP_SIZE = 96  # Translated comment
+INNER_MARGIN = 128  # Translated comment
 
 base_dir = '/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/train_tryout_32/carbonmapper_data_temporal_split_classification'
 train_csv_path = os.path.join(base_dir, 'train.csv')
@@ -21,8 +21,7 @@ def get_crop(width=IMG_SIZE, height=IMG_SIZE,
              center_size=CENTER_SIZE,
              crop_width=CROP_SIZE, crop_height=CROP_SIZE):
     """
-    返回一个 (top, left)，保证 crop_width x crop_height 的窗口
-    一定覆盖中心的 center_size x center_size 区域。
+ (top, left), crop_width x crop_height  center center_size x center_size .
     """
     center_x = width // 2
     center_y = height // 2
@@ -31,27 +30,26 @@ def get_crop(width=IMG_SIZE, height=IMG_SIZE,
     center_top = center_y - center_size // 2
     center_bottom = center_y + center_size // 2
 
-    # 保证裁剪块不会出界，同时覆盖中心区域
+    # Translated comment
     min_left = max(0, center_right - crop_width)
     max_left = min(center_left, width - crop_width)
     min_top = max(0, center_bottom - crop_height)
     max_top = min(center_top, height - crop_height)
 
-    # 这里假设参数组合是合理的（min <= max），否则可以再加一层保护
+    # Translated comment
     left = random.randint(min_left, max_left)
     top = random.randint(min_top, max_top)
-    return top, left   # 注意：外面用的是 crop[0], crop[1] 当 (row, col)
+    return top, left  # Translated comment
 
 
 def random_inner_crop():
     """
-    在图像中部区域随机采样一个左上角，使得 CROP_SIZE x CROP_SIZE 不出图，
-    且离边缘至少 INNER_MARGIN 像素。
+ image, CROP_SIZE x CROP_SIZE figure,  edge INNER_MARGIN .
     """
     max_row = IMG_SIZE - CROP_SIZE - INNER_MARGIN
     max_col = IMG_SIZE - CROP_SIZE - INNER_MARGIN
 
-    # 如果 margin 太大导致 max < INNER_MARGIN，可以视情况退化成全图随机
+    # Translated comment
     if max_row < INNER_MARGIN or max_col < INNER_MARGIN:
         row = random.randint(0, IMG_SIZE - CROP_SIZE)
         col = random.randint(0, IMG_SIZE - CROP_SIZE)
@@ -74,11 +72,11 @@ for index, row in org_train_df.iterrows():
     mask = tifffile.imread(row['plume_mask_path'])
 
     crop_list = []
-    # 8 个中心相关 patch
+    # Translated comment
     for i in range(8):
         crop_list.append(get_crop())
 
-    # 16 个中部随机 patch
+    # Translated comment
     for i in range(16):
         crop_list.append(random_inner_crop())
 

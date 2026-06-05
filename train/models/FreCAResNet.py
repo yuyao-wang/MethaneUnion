@@ -6,7 +6,7 @@ class FourierTransformBlock(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1):
         super(FourierTransformBlock, self).__init__()
         self.stride = stride
-        # 对实部和虚部分别进行卷积操作
+        # Translated comment
         self.conv_real = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.conv_imag = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1, bias=False)
         self.bn_real = nn.BatchNorm2d(out_channels)
@@ -40,17 +40,17 @@ class SEBlock(nn.Module):
     def __init__(self, in_channels, reduction=16):
         super(SEBlock, self).__init__()
         self.se = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),  # 全局平均池化，输出大小为 1x1
-            nn.Conv2d(in_channels, in_channels // reduction, kernel_size=1),  # 降低维度
+            nn.AdaptiveAvgPool2d(1),  # Translated comment
+            nn.Conv2d(in_channels, in_channels // reduction, kernel_size=1),  # Translated comment
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // reduction, in_channels, kernel_size=1),  # 恢复维度
+            nn.Conv2d(in_channels // reduction, in_channels, kernel_size=1),  # Translated comment
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        # Squeeze操作
+        # Translated comment
         se_weight = self.se(x)
-        # Excitation操作
+        # Translated comment
         return x * se_weight
 
 # Basic Block with Parallel Conv and Fourier Branches

@@ -5,10 +5,10 @@ import time
 import earthaccess
 import pandas as pd
 
-# 登录 NASA Earthdata
+# Log in to NASA Earthdata
 auth = earthaccess.login()
 
-# 配置
+# config
 BASE_DIR = Path(__file__).resolve().parent
 CSV_PATH = "./merged_with_emit_tag.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
@@ -61,25 +61,25 @@ def get_granule_time(granule: Any) -> pd.Timestamp:
 
 def download_one(granule: Any, granule_id: str) -> bool:
     if list(EMIT_RAW_DIR.glob(f"*{granule_id}*.nc")):
-        print(f"{granule_id} 已存在，跳过下载")
+        print(f"{granule_id} already exists, skipping download")
         return True
 
     last_err = None
     for attempt in range(1, MAX_DOWNLOAD_RETRIES + 1):
         try:
-            print(f"开始下载 {granule_id} (第{attempt}/{MAX_DOWNLOAD_RETRIES}次)")
-            # 单文件串行下载，避免内部并行导致异常直接冒泡终止整批任务。
+ print(f"Starting download {granule_id} (No. {attempt}/{MAX_DOWNLOAD_RETRIES})")
+            # Translated comment
             earthaccess.download([granule], str(EMIT_RAW_DIR), threads=1)
-            print(f"{granule_id} 下载完成")
+            print(f"{granule_id} download complete")
             return True
         except Exception as e:
             last_err = e
             sleep_s = min(2 ** (attempt - 1), 16)
-            print(f"{granule_id} 下载失败(第{attempt}/{MAX_DOWNLOAD_RETRIES}次): {e}")
+ print(f"{granule_id} download failed(No. {attempt}/{MAX_DOWNLOAD_RETRIES}): {e}")
             if attempt < MAX_DOWNLOAD_RETRIES:
                 time.sleep(sleep_s)
 
-    print(f"{granule_id} 下载最终失败，跳过。最后错误: {last_err}")
+ print(f"{granule_id} downloadfailure, .: {last_err}")
     return False
 
 
@@ -95,7 +95,7 @@ def find_best_granule(lat: float, lon: float, target_time: pd.Timestamp) -> Opti
                 short_name="EMITL2ARFL",
                 point=(float(lon), float(lat)),
                 temporal=(start, end),
-                # page_size=200 在 CMR 偶发 500，降低请求规模更稳。
+                # Translated comment
                 count=100,
             )
             last_err = None
@@ -104,7 +104,7 @@ def find_best_granule(lat: float, lon: float, target_time: pd.Timestamp) -> Opti
             last_err = e
             sleep_s = min(2 ** (attempt - 1), 16)
             print(
-                f"search_data 失败(第{attempt}/{MAX_SEARCH_RETRIES}次): "
+ f"search_data failure(No. {attempt}/{MAX_SEARCH_RETRIES}): "
                 f"lon={lon}, lat={lat}, temporal=({start},{end}), err={e}"
             )
             if attempt < MAX_SEARCH_RETRIES:
@@ -112,7 +112,7 @@ def find_best_granule(lat: float, lon: float, target_time: pd.Timestamp) -> Opti
 
     if last_err is not None:
         print(
-            "search_data 多次失败，跳过该目标时间: "
+ "search_data failure, time: "
             f"lon={lon}, lat={lat}, temporal=({start},{end})"
         )
         return None
@@ -145,11 +145,11 @@ def main() -> None:
     required_cols = ["datetime", "plume_latitude", "plume_longitude", "emit_granule_id"]
     missing = [c for c in required_cols if c not in df.columns]
     if missing:
-        raise RuntimeError(f"CSV 缺少必要列: {missing}")
+        raise RuntimeError(f"CSV is missing required columns: {missing}")
 
-    # 只处理已有 t0 匹配记录的行（t0 已下载，不重复处理）
+    # Translated comment
     work_idx = df[df["emit_granule_id"].notna()].index
-    print(f"待处理行数: {len(work_idx)}")
+    print(f"rows to process: {len(work_idx)}")
 
     for n, i in enumerate(work_idx, start=1):
         row = df.loc[i]
@@ -157,22 +157,22 @@ def main() -> None:
         lat = row["plume_latitude"]
         lon = row["plume_longitude"]
 
-        print(f"[{n}/{len(work_idx)}] 行 {i} 开始处理")
+ print(f"[{n}/{len(work_idx)}] {i} starting processing")
         for days, col in OFFSETS:
-            # 已有记录时不重复检索
+            # Translated comment
             if pd.notna(df.at[i, col]) and str(df.at[i, col]).strip():
                 continue
 
             target_time = base_time - pd.Timedelta(days=days)
             granule = find_best_granule(float(lat), float(lon), target_time)
             if granule is None:
-                print(f"  {col}: 未找到候选 (target={target_time})")
+                print(f"  {col}: no candidate found (target={target_time})")
                 df.at[i, col] = pd.NA
                 continue
 
             granule_id = get_granule_id(granule)
             if not granule_id:
-                print(f"  {col}: 找到候选但无 granule_id")
+                print(f"  {col}: candidate found but granule_id is missing")
                 df.at[i, col] = pd.NA
                 continue
 
@@ -180,10 +180,10 @@ def main() -> None:
             print(f"  {col}: {granule_id}")
             ok = download_one(granule, granule_id)
             if not ok:
-                print(f"  {col}: granule_id 已记录，但下载失败")
+ print(f" {col}: granule_id record, download failed")
 
     df.to_csv(CSV_PATH, index=False)
-    print(f"已更新 CSV: {CSV_PATH}")
+    print(f"Updated CSV: {CSV_PATH}")
 
 
 if __name__ == "__main__":

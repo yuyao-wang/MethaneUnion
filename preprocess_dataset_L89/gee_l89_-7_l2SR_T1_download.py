@@ -9,16 +9,16 @@ import pandas as pd
 from google.cloud import storage
 
 # ====== Config ======
-# 只提供“需要下载 prev 的 plume_id + 现有 l89 文件名”
+# Translated comment
 INDEX_CSV = "/data2/yuyao/methane_emission/preprocess_dataset_L89/merged_plumes_with_l89_sr.csv"
-# 用来拿 lat/lon（按 plume_id join）
+# Translated comment
 MERGED_FILE_CSV = "/data2/yuyao/methane_emission/carbon_mapper_data/csvs/merged_file.csv"
 
 COMPLEMENT_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_L89_L2SR_by_gee"
 
 GCP_PROJECT = "project-eca602a8-5837-4ae6-b4c"
 GCS_BUCKET = "l89_bckt"
-GCS_PREFIX = "cm_l89_sr_t1_prev"   # ✅ 建议换个前缀，避免跟 t0 混
+GCS_PREFIX = "cm_l89_sr_t1_prev"  # Translated comment
 
 MAX_PENDING_TASKS = 200
 PENDING_TASK_SLEEP_SECONDS = 60
@@ -27,8 +27,8 @@ CLOUD_COVER_MAX = 20
 CHIP_SIZE_PX = 512
 SCALE_M = 30
 
-# ✅ 关键：往回搜多少天来找“上一张过境”
-# Landsat 重访 ~16 天，但有轨道重叠、L8+L9 等，所以建议 60 足够稳
+# Translated comment
+# Translated comment
 SEARCH_BACK_DAYS = 60
 
 EXPORT_SCALED_REFLECTANCE = False
@@ -87,8 +87,7 @@ def merge_l89_sr_t1_collection(region, start_dt: datetime, end_dt: datetime):
 
 def add_sort_keys_prev(img, anchor_dt: datetime):
     """
-    只考虑“早于 anchor 的影像”，并给出：
-    - time_diff_seconds = anchor - img (正数越小越好)
+ " anchor image", :  - time_diff_seconds = anchor - img ()
     """
     anchor = ee.Date(anchor_dt.isoformat())
     t = ee.Date(img.get("system:time_start"))
@@ -97,16 +96,14 @@ def add_sort_keys_prev(img, anchor_dt: datetime):
 
 def find_prev_overpass_image(region, anchor_dt: datetime):
     """
-    在 (anchor-SEARCH_BACK_DAYS, anchor) 内找上一张过境
-    约束：system:time_start < anchor_dt
-    排序：time_diff_seconds 升序（最近的过去），再 cloud cover 升序
-    """
+ (anchor-SEARCH_BACK_DAYS, anchor)  : system:time_start < anchor_dt
+ : time_diff_seconds (), cloud cover     """
     start_dt = anchor_dt - timedelta(days=SEARCH_BACK_DAYS)
-    end_dt = anchor_dt  # 只搜到 anchor 之前
+    end_dt = anchor_dt  # Translated comment
 
     col = merge_l89_sr_t1_collection(region, start_dt, end_dt)
 
-    # 强制 < anchor
+    # Translated comment
     anchor_ms = int(anchor_dt.timestamp() * 1000)
     col = col.filter(ee.Filter.lt("system:time_start", anchor_ms))
 
@@ -115,7 +112,7 @@ def find_prev_overpass_image(region, anchor_dt: datetime):
     if col.size().getInfo() == 0:
         return None
 
-    # ✅ 先按“离 anchor 最近”（time_diff_seconds 最小），再按云量
+    # Translated comment
     col = col.sort("time_diff_seconds", True).sort("CLOUD_COVER", True)
     return ee.Image(col.first())
 
@@ -127,7 +124,7 @@ def maybe_scale_reflectance(img):
     out = sr.addBands(qa, overwrite=True)
     return out.copyProperties(img, img.propertyNames())
 
-# ======= 去重：bucket 扫描（按 plume_id_prev） =======
+# Translated comment
 def load_gcs_ids(bucket_name: str, prefix: str):
     ids = set()
     if SKIP_GCS_SCAN or os.getenv("SKIP_GCS_SCAN") == "1":
@@ -182,7 +179,7 @@ def wait_for_task_capacity(suffix: str):
 
 def export_prev_to_gcs(img, region, plume_id: str):
     """
-    文件名：{plume_id}_l89_prev_{SPACECRAFT}_{acqtime}.tif
+ file: {plume_id}_l89_prev_{SPACECRAFT}_{acqtime}.tif
     """
     img = img.select(EXPORT_BANDS)
     img = img.toUint16()
@@ -245,7 +242,7 @@ def main():
     mdf["plume_id"] = mdf["plume_id"].astype(str)
     loc_map = dict(zip(mdf["plume_id"], zip(mdf["plume_latitude"], mdf["plume_longitude"])))
 
-    # 去重：tasks + bucket
+    # Translated comment
     suffix = "_l89_prev2"
     task_ids, pending = load_gee_task_ids(suffix)
     gcs_ids = load_gcs_ids(GCS_BUCKET, GCS_PREFIX)

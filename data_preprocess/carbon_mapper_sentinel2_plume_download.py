@@ -106,9 +106,9 @@ def latlon_to_pixel(lat, lon, dataset):
     return ~dataset.transform * (x, y)
 
 def parse_a_file(file_path, plume_bounds):
-    # 读取 Sentinel-2 JP2 文件
+    # Read the Sentinel-2 JP2 file
     with rasterio.open(file_path) as dataset:
-        # 定义感兴趣区域的经纬度边界
+        # define the latitude/longitude bounds of the region of interest
         # plume_bounds = [-103.54983976823348, 32.06765206888606, -103.54028239690392, 32.07575083506975]
         
         top_left = latlon_to_pixel(plume_bounds[3], plume_bounds[0], dataset)
@@ -274,7 +274,7 @@ def fetch_products(poly, start_ts, end_ts):
 
         values = payload.get('value', [])
         for product in values:
-            # ✅ 正确读取 ContentDate.Start
+            # Translated comment
             content_date = product.get('ContentDate', {})
             start_time_str = content_date.get('Start')
             if not start_time_str:

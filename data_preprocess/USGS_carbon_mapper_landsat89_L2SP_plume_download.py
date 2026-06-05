@@ -26,7 +26,7 @@ from util.utils import parse_args, load_config
 
 from tqdm import tqdm
 
-# 全局设置
+# Translated comment
 WINDOW_SIZE = 512
 # L8_PLUME_BASE_DIR = "/data2/yuyao/methane_emission/landsat_l2sp_plume_stacks"
 base_dir = '/data2/yuyao/methane_emission/carbonmapper_data_l89_l2sp'
@@ -183,8 +183,8 @@ def datetime_to_iso_z(dt: datetime) -> str:
 
 def select_landsat_items(items, event_dt, max_scenes=3):
     """
-    从 STAC 返回的 items 里选出距离事件时间最近的最多 max_scenes 个场景。
-    优先保留同一天的，然后前后各一景。
+ STAC items distancetime max_scenes .
+ , .
     """
     if not items:
         return []
@@ -205,7 +205,7 @@ def select_landsat_items(items, event_dt, max_scenes=3):
     selected = []
 
     if same_day:
-        # 同一天取离中心时间最近的
+        # Translated comment
         closest_same_day = min(same_day, key=lambda p: abs((p["acq_time"] - event_dt).total_seconds()))
         selected.append(closest_same_day)
 
@@ -216,11 +216,11 @@ def select_landsat_items(items, event_dt, max_scenes=3):
             closest_after = min(after, key=lambda p: p["acq_time"])
             selected.append(closest_after)
     else:
-        # 没有同一天：直接按“离事件时间绝对距离”排序取前 max_scenes 个
+        # Translated comment
         sorted_items = sorted(items, key=lambda p: abs((p["acq_time"] - event_dt).total_seconds()))
         selected = sorted_items[:max_scenes]
 
-    # 按时间排序一下方便 debug 和后处理
+    # Translated comment
     return sorted(selected, key=lambda p: p["acq_time"])
 
 def normalize_scene_id(scene_id: str) -> str:
@@ -461,8 +461,7 @@ def crop_band_to_window(tif_path: str, plume_bounds: List[float]) -> Optional[np
 
 def parse_landsat_mtl(mtl_path: Optional[str]) -> Dict[str, Optional[float]]:
     """
-    解析 MTL.txt 中我们关心的字段：
-      - DATE_ACQUIRED + SCENE_CENTER_TIME -> acq_datetime_iso
+ MTL.txt :       - DATE_ACQUIRED + SCENE_CENTER_TIME -> acq_datetime_iso
       - SUN_AZIMUTH, SUN_ELEVATION
       - IMAGE_QUALITY_OLI, IMAGE_QUALITY_TIRS
     """
@@ -538,7 +537,7 @@ def build_landsat_stack_for_plume(
     out_tif_path: str,
 ) -> Optional[Dict[str, int]]:
     """
-    从 scene_dir 中读取 SR_B1-7 + ST_B10，裁剪 WINDOW_SIZE × WINDOW_SIZE，并 stack 成 [8,H,W]。
+ scene_dir load SR_B1-7 + ST_B10, WINDOW_SIZE x WINDOW_SIZE, stack [8,H,W].
     """
     band_suffixes = [f"SR_B{b}" for b in range(1, 8)] + ["ST_B10"]
 
@@ -585,10 +584,8 @@ def process_single_landsat_scene(
     plume_bounds: List[float],
 ) -> Optional[Dict[str, object]]:
     """
-    对单个场景：
-      1. 假设原始产品已经解压到 landsat_raw_root/scene_id
-      2. parse MTL 取时间 / 太阳角 / 质量
-      3. 裁剪 stack 写到 plume_dir
+ :  1. landsat_raw_root/scene_id
+ 2. parse MTL time / /  3. stack plume_dir
     """
     product_id = normalize_scene_id(scene_id)
     scene_dir = os.path.join(landsat_raw_root, product_id)
@@ -660,10 +657,9 @@ def download_task_l8(
     max_scenes=MAX_L8_PER_PLUME,
 ):
     """
-    针对单个 plume：
-    - 使用 USGS M2M 查询 Landsat 8/9 Collection 2 Level-2
-    - 选出最多 max_scenes 个离事件时间最近的场景
-    - 下载并裁剪生成 plume stack
+ plume:  - USGS M2M Landsat 8/9 Collection 2 Level-2
+ - max_scenes time
+ - downloadgenerate plume stack
     """
     plume_id = str(row_data.get('plume_id', 'unknown'))
     plume_dir = os.path.join(base_dir, plume_id)
@@ -745,7 +741,7 @@ def download_task_l8(
             time.sleep(0.2)
 
         if recorded_scenes:
-            # 写 plume 层面的 completion marker
+            # Translated comment
             with open(plume_marker_file, 'w') as f:
                 f.write(datetime_to_iso_z(datetime.now(timezone.utc)))
 
@@ -781,7 +777,7 @@ if __name__ == "__main__":
     try:
         df = pd.read_csv(merged_csv_path)
 
-        # 新增 L8 列
+        # Translated comment
         new_cols = []
         for i in range(1, MAX_L8_PER_PLUME + 1):
             new_cols.extend([
@@ -799,7 +795,7 @@ if __name__ == "__main__":
             if col not in df.columns:
                 df[col] = ""
 
-        # 只处理有 plume_tif 的行
+        # Translated comment
         plume_tif_mask = df["plume_tif"].apply(lambda v: isinstance(v, str) and len(v) > 0)
         processable_mask = plume_tif_mask
 
@@ -843,7 +839,7 @@ if __name__ == "__main__":
         if progress_bar is not None:
             progress_bar.close()
 
-        # 写回 CSV
+        # Translated comment
         for res in results:
             if res is None:
                 continue

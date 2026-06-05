@@ -14,9 +14,9 @@ def download_tif(url, path):
     if response.status_code == 200:
         with open(path, 'wb') as file:
             file.write(response.content)
-        print(f'文件下载并保存成功')
+ print(f'filedownloadsavesuccess')
     else:
-        print(f'无法下载{url}，状态码:', response.status_code)
+ print(f'download{url}, :', response.status_code)
 
 for index, row in df.iterrows():
     if isinstance(row['plume_tif'], str) and len(row['plume_tif']) > 0:

@@ -9,16 +9,16 @@ def balance_1_1(df, label_col="label", seed=42):
     pos = df[df[label_col] == 1]
     neg = df[df[label_col] == 0]
 
-    # 如果有一类是 0 直接报错
+    # Translated comment
     if len(pos) == 0 or len(neg) == 0:
         raise ValueError(f"One class is empty: pos={len(pos)}, neg={len(neg)}")
 
-    # 谁多就下采样谁
+    # Translated comment
     if len(neg) > len(pos):
         neg = neg.sample(n=len(pos), random_state=seed)
     elif len(pos) > len(neg):
         pos = pos.sample(n=len(neg), random_state=seed)
-    # 如果刚好一样多，就不用动
+    # Translated comment
 
     out = (
         pd.concat([pos, neg], ignore_index=True)

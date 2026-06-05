@@ -24,14 +24,14 @@ class Attention(nn.Module):
         out = self.gamma * out + x
         return out
 
-# 定义带注意力机制的图片分类模型
+# Translated comment
 class AttentionCNN(nn.Module):
     def __init__(self, num_classes=10):
         super(AttentionCNN, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=18, out_channels=64, kernel_size=3, padding=1)  # 输入通道调整为18
+        self.conv1 = nn.Conv2d(in_channels=18, out_channels=64, kernel_size=3, padding=1)  # Translated comment
         self.conv2 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
         self.attention = Attention(in_dim=128)
-        self.fc1 = nn.Linear(in_features=128 * 24 * 24, out_features=256)  # 调整后的输入大小
+        self.fc1 = nn.Linear(in_features=128 * 24 * 24, out_features=256)  # Translated comment
         self.fc2 = nn.Linear(in_features=256, out_features=num_classes)
 
     def forward(self, x):
@@ -45,9 +45,9 @@ class AttentionCNN(nn.Module):
         x = F.max_pool2d(x, 2)  # 24x24
         # print(f'After max_pool2d 2: {x.shape}')
         x = self.attention(x)
-        # print(f'Attention output shape: {x.shape}')  # 打印特征图形状
+        # Translated comment
         x = x.view(x.size(0), -1)
-        # print(f'Flattened shape: {x.shape}')  # 打印展平后的形状
+        # Translated comment
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x

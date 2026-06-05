@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 class DoubleConv3D(nn.Module):
-    """两个连续的3D卷积 + BN + ReLU"""
+    """Translated to English."""
     def __init__(self, in_channels, out_channels):
         super(DoubleConv3D, self).__init__()
         self.conv = nn.Sequential(
@@ -21,7 +21,7 @@ class UNet3D(nn.Module):
     def __init__(self, in_channels):
         super(UNet3D, self).__init__()
 
-        # Encoder部分
+        # Translated comment
         self.enc1 = DoubleConv3D(in_channels, 64)
         self.pool1 = nn.MaxPool3d(kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.enc2 = DoubleConv3D(64, 128)
@@ -32,7 +32,7 @@ class UNet3D(nn.Module):
         # Bottleneck
         self.bottleneck = DoubleConv3D(256, 512)
 
-        # Decoder部分
+        # Translated comment
         self.upconv3 = nn.ConvTranspose3d(512, 256, kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.dec3 = DoubleConv3D(512, 256)
         self.upconv2 = nn.ConvTranspose3d(256, 128, kernel_size=(1, 2, 2), stride=(1, 2, 2))
@@ -40,7 +40,7 @@ class UNet3D(nn.Module):
         self.upconv1 = nn.ConvTranspose3d(128, 64, kernel_size=(1, 2, 2), stride=(1, 2, 2))
         self.dec1 = DoubleConv3D(128, 64)
 
-        # 输出层，单通道用于二分类
+        # Translated comment
         self.out_conv = nn.Conv3d(64, 1, kernel_size=1)
 
     def forward(self, x):
@@ -59,17 +59,17 @@ class UNet3D(nn.Module):
         dec2 = self.dec2(torch.cat((self.upconv2(dec3), enc2), dim=1))
         dec1 = self.dec1(torch.cat((self.upconv1(dec2), enc1), dim=1))
 
-        # 输出层
-        out = self.out_conv(dec1)  # 输出形状 (batch_size, 1, 3, 32, 32)
+        # outputlayer
+        out = self.out_conv(dec1)  # Translated comment
 
-        # 对时间帧求平均
+        # Translated comment
         out = torch.mean(out, dim=2)  # (batch_size, 1, 1, 32, 32)
 
         return out
 
-# # 创建一个3D U-Net模型
+# Translated comment
 # model = UNet3D(in_channels=9)
 # x = torch.randn(1, 9, 3, 32, 32)  # (batch_size, channels, frames, height, width)
 # output = model(x)
 
-# print(output.shape)  # 输出维度 (1, 1, 1, 32, 32)
+# Translated comment

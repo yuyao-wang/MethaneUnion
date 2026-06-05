@@ -11,7 +11,7 @@ from scipy.spatial import KDTree as CPU_KDTree
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
-# ==================== 用户配置区 ====================
+# ==================== user configuration section ====================
 CSV_PATH = "./merged_with_emit_tag.csv"
 SRF_CSV = "./WV3_VNIR_SWIR_response.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
@@ -19,7 +19,7 @@ OUTPUT_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/EMIT_sim
 
 CHIP_SIZE_PX = 512    
 SCALE_M = 60          
-MAX_WORKERS = 12  # 根据显存大小调整。如果显存 > 24G，可以设为 8 或更多。
+MAX_WORKERS = 12  # Translated comment
 # ===================================================
 
 os.umask(0)
@@ -40,7 +40,7 @@ def find_local_granule(granule_id):
     return None
 
 def process_single_task(row_tuple, srf_data):
-    """ 单个任务的处理逻辑 """
+    """Translated to English."""
     _, row = row_tuple
     plume_id = row['plume_id']
     out_tif = OUTPUT_DIR / f"{plume_id}_sim_WV3.tif"
@@ -53,7 +53,7 @@ def process_single_task(row_tuple, srf_data):
         return f"[Error] Not found: {plume_id}"
 
     try:
-        # 1. 空间裁剪
+        # Translated comment
         with xr.open_dataset(rfl_path, group='location', engine='netcdf4') as ds_loc:
             lats, lons = ds_loc['lat'].values, ds_loc['lon'].values
             mask_spatial = (lats > row['plume_latitude'] - 0.15) & (lats < row['plume_latitude'] + 0.15) & \
@@ -64,14 +64,14 @@ def process_single_task(row_tuple, srf_data):
             y_min, y_max, x_min, x_max = y_idxs.min(), y_idxs.max(), x_idxs.min(), x_idxs.max()
             lat_crop, lon_crop = lats[y_min:y_max, x_min:x_max], lons[y_min:y_max, x_min:x_max]
 
-        # 2. 读取反射率与光谱矩阵计算
+        # Translated comment
         with xr.open_dataset(rfl_path, engine='netcdf4') as ds:
             rfl_crop = ds['reflectance'][y_min:y_max, x_min:x_max, :].values
         
         with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
             emit_waves = dsb['wavelengths'].values
 
-        # 计算 SRF 矩阵 (在进程内计算，保证 emit_waves 匹配)
+        # Translated comment
         wv3_bands = ['Coastal (MS7)', 'Blue (MS4)', 'Green (MS3)', 'Yellow (MS6)', 'Red (MS2)', 
                      'Red Edge (MS5)', 'NIR1 (MS1)', 'NIR2 (MS8)', 'SWIR1', 'SWIR2', 'SWIR3', 
                      'SWIR4', 'SWIR5', 'SWIR6', 'SWIR7', 'SWIR8']
@@ -80,7 +80,7 @@ def process_single_task(row_tuple, srf_data):
             w = np.interp(emit_waves, srf_data['waves'], srf_data[b], left=0, right=0)
             srf_matrix[:, i] = w / (w.sum() + 1e-12)
 
-        # 3. GPU 运算
+        # Translated comment
         cp_rfl = cp.array(np.nan_to_num(rfl_crop, 0))
         cp_srf = cp.array(srf_matrix)
         sim_conv = cp.matmul(cp_rfl, cp_srf)
@@ -101,7 +101,7 @@ def process_single_task(row_tuple, srf_data):
         
         cp_simulated = cp.stack(cp_simulated_list, axis=0)
 
-        # 4. 空间重采样 (CPU KDTree)
+        # Translated comment
         utm_epsg = get_utm_crs(row['plume_latitude'], row['plume_longitude'])
         to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
         to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
@@ -115,7 +115,7 @@ def process_single_task(row_tuple, srf_data):
         tree = CPU_KDTree(np.stack([lat_crop.ravel(), lon_crop.ravel()], axis=1))
         dist, idxs = tree.query(np.stack([t_lat.ravel(), t_lon.ravel()], axis=1), distance_upper_bound=0.001)
         
-        # 5. 映射输出
+        # Translated comment
         res = cp_simulated.reshape(16, -1)[:, cp.array(idxs)].reshape(16, CHIP_SIZE_PX, CHIP_SIZE_PX)
         res[:, cp.array(dist == float('inf')).reshape(CHIP_SIZE_PX, CHIP_SIZE_PX)] = 0
         
@@ -123,7 +123,7 @@ def process_single_task(row_tuple, srf_data):
         sim_da = xr.DataArray(res_np, dims=("band", "y", "x"), coords={"band": np.arange(1, 17), "y": ty, "x": tx})
         sim_da.rio.write_crs(utm_epsg, inplace=True).rio.to_raster(out_tif)
 
-        # 显存清理
+        # Translated comment
         del cp_rfl, cp_srf, sim_conv, cp_simulated, res, res_np
         cp.get_default_memory_pool().free_all_blocks()
         gc.collect()
@@ -136,7 +136,7 @@ def main():
     df = pd.read_csv(CSV_PATH)
     srf_df = pd.read_csv(SRF_CSV)
     
-    # 预加载 SRF 数据到字典，避免进程间传递大型 DataFrame
+    # Translated comment
     wv3_bands = ['Coastal (MS7)', 'Blue (MS4)', 'Green (MS3)', 'Yellow (MS6)', 'Red (MS2)', 
                  'Red Edge (MS5)', 'NIR1 (MS1)', 'NIR2 (MS8)', 'SWIR1', 'SWIR2', 'SWIR3', 
                  'SWIR4', 'SWIR5', 'SWIR6', 'SWIR7', 'SWIR8']
@@ -148,7 +148,7 @@ def main():
     
     print(f"Starting parallel processing for {len(tasks)} tasks with {MAX_WORKERS} workers...")
 
-    # 使用多进程池
+    # Translated comment
     worker_func = partial(process_single_task, srf_data=srf_data)
     with ProcessPoolExecutor(max_workers=MAX_WORKERS) as executor:
         for result in executor.map(worker_func, tasks):

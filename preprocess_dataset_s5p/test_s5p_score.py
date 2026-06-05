@@ -7,15 +7,15 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 csv_path = "/data2/yuyao/methane_emission/carbon_mapper_data/csvs/s5p_all_OFFL.csv"
 out_csv  = "/data2/yuyao/methane_emission/carbon_mapper_data/csvs/s5p_all_OFFL_detectability_score.csv"
 
-# 并行线程数（I/O 为主，别开太大；8~16 通常可以）
+# Translated comment
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
-NUM_WORKERS = 4  # 先小一点，2~4 稳妥
+NUM_WORKERS = 4  # Translated comment
 
 df = pd.read_csv(csv_path, low_memory=False)
 
 def pick_ch4_var(ds):
-    # 按优先级选变量名
+    # Translated comment
     for k in ["methane_mixing_ratio_bias_corrected", "methane_mixing_ratio", "xch4"]:
         if k in ds.variables:
             return k
@@ -23,8 +23,8 @@ def pick_ch4_var(ds):
 
 def nearest_ch4_qa(nc_path, lat0, lon0):
     """
-    返回：ch4, qa, dist_km, iy, ix, var_name
-    找不到则返回 np.nan
+ : ch4, qa, dist_km, iy, ix, var_name
+ np.nan
     """
     try:
         ds = xr.open_dataset(nc_path, group="PRODUCT", engine="netcdf4", decode_timedelta=True)
@@ -42,7 +42,7 @@ def nearest_ch4_qa(nc_path, lat0, lon0):
             return (np.nan, np.nan, np.nan, -1, -1, None)
         ch4 = ds[var].values
 
-        # 兼容 (T,H,W) 或 (H,W)
+        # Translated comment
         if lat.ndim == 3:
             lat2, lon2 = lat[0], lon[0]
             ch42 = ch4[0] if ch4.ndim == 3 else ch4
@@ -52,7 +52,7 @@ def nearest_ch4_qa(nc_path, lat0, lon0):
             ch42 = ch4
             qa2  = qa
 
-        # 距离（与之前一致的近似）
+        # Translated comment
         lat_rad = np.deg2rad(lat2.astype(np.float64))
         lon_rad = np.deg2rad(lon2.astype(np.float64))
         lat0r = math.radians(float(lat0))
@@ -122,7 +122,7 @@ def process_row(i_row):
         "var_t-360": v360,
     }
 
-# --- 跑并行 ---
+# Translated comment
 rows = []
 with ProcessPoolExecutor(max_workers=NUM_WORKERS) as ex:
     futures = [ex.submit(process_row, (i, row)) for i, row in df.iterrows()]
@@ -135,13 +135,13 @@ res = pd.DataFrame(rows)
 res.to_csv(out_csv, index=False)
 print("Saved:", out_csv, "rows:", len(res))
 
-# --- 统计“可见”样本数（你可改阈值）---
-# 先给几个常用阈值看看
+# Translated comment
+# Translated comment
 valid = res[np.isfinite(res["score"])].copy()
 print("Valid score rows:", len(valid), "/", len(res))
 print("score quantiles:", valid["score"].quantile([0.01,0.05,0.1,0.25,0.5,0.75,0.9,0.95,0.99]).to_dict())
 
-# 如果你想先加 qa 门槛（比如 t0 qa >= 0.5）
+# Translated comment
 valid_qa = valid[(valid["qa_t0"].isna()) | (valid["qa_t0"] >= 0.5)]
 print("Valid+QA rows:", len(valid_qa))
 

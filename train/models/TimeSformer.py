@@ -460,17 +460,17 @@ class TimeSformer(nn.Module):
         x = self.model(x)
         return x
 
-#示例用法
+# Translated comment
 # batch_size = 4
-# num_frames = 3  # 帧数为3
-# num_channels = 10  # 通道数为10
+# Translated comment
+# Translated comment
 # height, width = 128, 128
 
 # input_data = torch.randn(batch_size, num_channels, num_frames, height, width)
 
-# # 创建 TimeSformer 模型
+# Translated comment
 # model = TimeSformer(img_size=128, patch_size=16, num_frames=3, in_channels=10, num_classes=1)
 
-# # 前向传播
+# Translated comment
 # output = model(input_data)
-# print(output.shape)  # 输出形状应该是 (batch_size, 1)
+# Translated comment

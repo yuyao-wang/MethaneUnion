@@ -3,7 +3,7 @@ import torch
 import math
 
 def get_freq_indices(method):
-    # 频域选择方法
+    # Translated comment
     assert method in ['top1','top2','top4','top8','top16','top32',
                       'bot1','bot2','bot4','bot8','bot16','bot32',
                       'low1','low2','low4','low8','low16','low32']
@@ -70,7 +70,7 @@ class MultiSpectralDCTLayer3D(nn.Module):
     def forward(self, x):
         assert len(x.shape) == 5, 'x must be 5-dimensional, but got ' + str(len(x.shape))
         x = x * self.weight
-        result = torch.sum(x, dim=[2, 3, 4])  # 在D, H, W三个维度上进行求和
+        result = torch.sum(x, dim=[2, 3, 4])  # Translated comment
         return result
 
     def build_filter(self, pos, freq, POS):
@@ -140,7 +140,7 @@ class ResNet3D(nn.Module):
     def __init__(self, block, layers, num_classes=1000):
         super(ResNet3D, self).__init__()
         self.inplanes = 64
-        self.conv1 = nn.Conv3d(10, 64, kernel_size=7, stride=2, padding=3, bias=False)  # 输入通道为10
+        self.conv1 = nn.Conv3d(10, 64, kernel_size=7, stride=2, padding=3, bias=False)  # Translated comment
         self.bn1 = nn.BatchNorm3d(64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
@@ -188,7 +188,7 @@ def fcanet3d18(num_classes=1000, input_channel=10, pretrained=False):
     """Constructs a FCA-Net3D-18 model."""
     model = ResNet3D(FcaBasicBlock3D, [2, 2, 2, 2], num_classes=num_classes)
     
-    # 修改第一层的输入通道数，适应 (frames, channels, D, 128, 128) 的输入
+    # Translated comment
     model.conv1 = nn.Conv3d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
     model.bn1 = nn.BatchNorm3d(64)
     model.relu = nn.ReLU(inplace=True)
@@ -197,13 +197,13 @@ def fcanet3d18(num_classes=1000, input_channel=10, pretrained=False):
     model.avgpool = nn.AdaptiveAvgPool3d(1)
     return model
 
-# 生成随机输入 (batch_size, frames, channels, depth, height, width)
+# Translated comment
 input_tensor = torch.randn(8, 3, 10, 32, 128, 128)  # batch_size=8, frames=10, channels=10, depth=32, height=128, width=128
 
-# 初始化模型
+# initializemodel
 model = fcanet3d18(num_classes=2, input_channel=10)
 
-# 运行模型前向传播
+# Translated comment
 output = model(input_tensor)
 
 print("Output shape:", output.shape)

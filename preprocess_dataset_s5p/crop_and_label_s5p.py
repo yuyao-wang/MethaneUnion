@@ -32,11 +32,11 @@ OUT_SIZE = 224
 MAX_MISSING_RATIO_T0 = 0.50
 
 NEG_EXCLUDE_HALF = 5           # outside 11x11
-NEG_RANDOM_TRIES = 50          # ✅ 按你说的：随机 50 次
+NEG_RANDOM_TRIES = 50  # Translated comment
 # corners are tried first
 
 # parallel
-MAX_WORKERS = 18                # 网络盘建议 4~8
+MAX_WORKERS = 18  # Translated comment
 PRINT_EVERY = 50
 
 CH4_CANDIDATES = [

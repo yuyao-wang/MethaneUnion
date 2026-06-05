@@ -13,7 +13,7 @@ from rasterio.warp import transform as rio_transform
 from tqdm import tqdm
 
 # =========================
-# Config (按需改)
+# Translated comment
 # =========================
 CSV_PATH = "/data2/yuyao/methane_emission/preprocess_dataset_s2/CM_S2_L2A_gee90360.csv"
 MANIFEST_MINUS7 = "/data2/yuyao/methane_emission/preprocess_dataset_s2/manifest_minus7_plume_to_safe.csv"
@@ -27,11 +27,11 @@ HALF = PATCH_SIZE // 2
 
 MAX_WORKERS = 12
 
-# 进度与 debug
-PRINT_EVERY = 200          # 每处理多少条打印一次统计
-MAX_FAIL_DETAIL = 10       # 最多打印多少条失败详情（避免刷屏）
+# Translated comment
+PRINT_EVERY = 200  # Translated comment
+MAX_FAIL_DETAIL = 10  # Translated comment
 
-# 你原始 12 槽位逻辑（缺的 band 置 0）
+# Translated comment
 SLOT_BANDS = ["B01","B02","B03","B04","B05","B06","B07","B8A","B09","B10","B11","B12"]
 
 JP2_NAME_RE = re.compile(r"^(T\d{2}[A-Z]{3})_(\d{8}T\d{6})_(B(?:0[1-9]|1[0-2]|8A))_20m\.jp2$")
@@ -102,7 +102,7 @@ def write_stack_geotiff(out_path: str, stack_bhw: np.ndarray, ref_ds, win: Windo
 
 def build_minus7_for_plume(plume_id: str, lat: float, lon: float, safe_name: str):
     """
-    成功返回 dict；失败返回 dict(ok=0, reason=...)
+ success dict; failure dict(ok=0, reason=...)
     """
     safe_dir = os.path.join(RAW_DIR_MINUS7, safe_name)
     if not os.path.isdir(safe_dir):
@@ -222,7 +222,7 @@ def main():
                 reason = res.get("reason", "unknown_fail")
                 fail_counter[reason] += 1
 
-                # 只打印前 MAX_FAIL_DETAIL 条失败详情，避免刷屏
+                # Translated comment
                 if fail_detail_printed < MAX_FAIL_DETAIL:
                     tqdm.write(f"[FAIL] plume={pid} safe={safe} reason={reason} extra={ {k:v for k,v in res.items() if k not in ('ok','plume_id','safe','reason')} }")
                     fail_detail_printed += 1
@@ -236,7 +236,7 @@ def main():
                     "ok_rate_200": f"{recent_ok:.2%}"
                 })
 
-            # 每 PRINT_EVERY 条打印一次汇总
+            # Translated comment
             if done % PRINT_EVERY == 0:
                 elapsed = time.time() - t0
                 recent_ok = (sum(last200) / len(last200)) if len(last200) else 0.0
@@ -250,15 +250,15 @@ def main():
 
     res_df = pd.DataFrame(results)
 
-    # 写回 df
+    # Translated comment
     ok_df = res_df[res_df["ok"] == 1].set_index("idx")
     for idx, row in ok_df.iterrows():
         df.at[idx, "s2_-7_path"] = row["out_rel"]
 
-    # 保存 CSV（覆盖原路径）
+    # Translated comment
     df.to_csv(CSV_PATH, index=False)
 
-    # 保存日志
+    # Translated comment
     log_csv = os.path.join(os.path.dirname(CSV_PATH), "build_s2_minus7_log.csv")
     res_df.to_csv(log_csv, index=False)
 

@@ -71,8 +71,8 @@ def ensure_chw(img: np.ndarray) -> np.ndarray:
 
 def is_done(dst_path: str, out_h=224, out_w=224) -> bool:
     """
-    ✅ 快速判断：文件存在 + 只读 TIFF header 拿 shape（不解码整张图）
-    避免 tiff.imread 在网络盘上解码/随机 IO 导致尾部卡住。
+ ✅ : file + TIFF header shape(figure)
+ tiff.imread / IO .
     """
     p = Path(dst_path)
     if not p.exists():
@@ -98,7 +98,7 @@ def resize_tif(src_path: str, dst_path: str):
     dst_path = Path(dst_path)
     dst_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # ✅ 防止“半写入文件”导致以后检查/解码卡住：写到 tmp 再原子替换
+    # Translated comment
     tmp = dst_path.with_suffix(dst_path.suffix + ".tmp")
 
     img = tiff.imread(src_path)
@@ -110,7 +110,7 @@ def resize_tif(src_path: str, dst_path: str):
 
 def safe_resize_one(src_path: str, dst_path: str, skip_if_done=True):
     """
-    返回 (src_path, status, info)
+ (src_path, status, info)
     status: "ok" | "skip" | "fail"
     """
     try:
@@ -126,22 +126,21 @@ def run_parallel(
     new_paths,
     workers=16,
     skip_if_done=True,
-    per_task_timeout_sec=120,     # 单任务“软超时”
-    stall_report_sec=120,         # 每隔多久打印一次 pending 示例
-    timeout_list_path=None,       # 例如: "/tmp/timeouts_train.txt"
+    per_task_timeout_sec=120,  # Translated comment
+    stall_report_sec=120,  # Translated comment
+    timeout_list_path=None,  # Translated comment
 ):
     """
-    软超时策略：
-    - 无法强杀卡住 I/O 的线程
-    - 但主线程在超过 per_task_timeout_sec 后“放弃等待”该任务
-    - 记录 timeout 的 src_path，继续收尾，避免永远 pending
+ :  - I/O worker
+ - worker per_task_timeout_sec ""
+ - record timeout src_path, , pending
     """
     bad = 0
     skipped = 0
     finished = 0
     total = len(paths)
 
-    # 每个 future 的起始时间
+    # Translated comment
     fut_start = {}
     fut2src = {}
 
@@ -161,12 +160,12 @@ def run_parallel(
         while pending:
             done_set, pending = wait(pending, timeout=5, return_when=FIRST_COMPLETED)
 
-            # 处理已完成
+            # Translated comment
             for fut in done_set:
                 try:
                     src, status, info = fut.result()
                 except Exception as e:
-                    # 极少数情况下 fut.result() 自身异常
+                    # Translated comment
                     src = fut2src.get(fut, "<unknown>")
                     status = "fail"
                     info = repr(e)
@@ -182,11 +181,11 @@ def run_parallel(
                 if finished % 500 == 0:
                     print(f"[PROGRESS] done={finished}/{total} ok_or_skip={finished-bad} skip={skipped} bad={bad}")
 
-                # 清理时间戳字典，省内存
+                # Translated comment
                 fut_start.pop(fut, None)
                 fut2src.pop(fut, None)
 
-            # 检查超时：把超时的 future 从 pending 里移除（不再等待）
+            # Translated comment
             now = time.time()
             if pending:
                 to_drop = []
@@ -200,10 +199,10 @@ def run_parallel(
                         src = fut2src.get(fut, "<unknown>")
                         timeouts.append(src)
                         bad += 1
-                        finished += 1  # 视为已经处理完（超时失败）
+                        finished += 1  # Translated comment
                         pending.remove(fut)
 
-                        # 试图 cancel（如果已在跑通常 cancel 不掉，但没关系）
+                        # Translated comment
                         try:
                             fut.cancel()
                         except Exception:
@@ -213,7 +212,7 @@ def run_parallel(
 
                     print(f"[PROGRESS] done={finished}/{total} ok_or_skip={finished-bad} skip={skipped} bad={bad}")
 
-            # 心跳：长期 pending 时打印几个例子
+            # Translated comment
             if pending and (now - last_stall_report) >= stall_report_sec:
                 sample = list(pending)[:5]
                 print(f"[STALL?] pending={len(pending)} examples:")
@@ -223,7 +222,7 @@ def run_parallel(
 
     print(f"[DONE] total={total} skip={skipped} bad={bad} timeouts={len(timeouts)}")
 
-    # 输出 timeout 清单
+    # Translated comment
     if timeout_list_path is not None and timeouts:
         p = Path(timeout_list_path)
         p.parent.mkdir(parents=True, exist_ok=True)
@@ -240,7 +239,7 @@ def process_csv(csv_path: str, out_csv_path: str, workers=4, skip_if_done=True):
         run_parallel(paths, new_paths, workers=workers, skip_if_done=skip_if_done, per_task_timeout_sec=120,
     timeout_list_path=str(Path(NEW_ROOT) / f"timeouts_{Path(csv_path).stem}_{col}.txt"))
 
-        # ✅ 关键：无论是否 skip，CSV 都写 NEW_ROOT 的新路径（覆盖整列）
+        # Translated comment
         df[col] = new_paths
 
     Path(out_csv_path).parent.mkdir(parents=True, exist_ok=True)

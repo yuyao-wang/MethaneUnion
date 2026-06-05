@@ -7,7 +7,7 @@ class Encoder(nn.Module):
     def __init__(self, input_channels, hidden_dims, latent_dim):
         super(Encoder, self).__init__()
 
-        # 初始化卷积层
+        # initializeconvolutionlayer
         modules = []
         for h_dim in hidden_dims:
             modules.append(
@@ -20,7 +20,7 @@ class Encoder(nn.Module):
 
         self.conv_layers = nn.Sequential(*modules)
 
-        # 输出隐空间的均值和方差
+        # Translated comment
         self.fc_mu = nn.Linear(hidden_dims[-1]*4, latent_dim)
         self.fc_var = nn.Linear(hidden_dims[-1]*4, latent_dim)
 
@@ -37,7 +37,7 @@ class Decoder(nn.Module):
 
         self.fc = nn.Linear(latent_dim, hidden_dims[-1] * 4)
 
-        # 反卷积层
+        # Translated comment
         modules = []
         hidden_dims.reverse()
         for i in range(len(hidden_dims) - 1):
@@ -69,7 +69,7 @@ class Decoder(nn.Module):
 
     def forward(self, z):
         x = self.fc(z)
-        x = x.view(-1, 64, 2, 2)  # 这里的维度需要根据实际情况调整
+        x = x.view(-1, 64, 2, 2)  # Translated comment
         x = self.conv_layers(x)
         return self.final_layer(x)
     
@@ -77,7 +77,7 @@ class Decoder(nn.Module):
 class VAE(nn.Module):
     def __init__(self, latent_dim):
         super(VAE, self).__init__()
-        # 编码器
+        # encoder
         self.encoder = nn.Sequential(
             nn.Flatten(),
             nn.Linear(128*128, 4096),
@@ -91,7 +91,7 @@ class VAE(nn.Module):
             nn.ReLU(),
             nn.Linear(128, latent_dim * 2),
         )
-        # 解码器
+        # decoder
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, 128),
             nn.BatchNorm1d(128),
@@ -112,26 +112,26 @@ class VAE(nn.Module):
         return mu + eps * std
 
     def forward(self, x):
-        # 编码
+        # Translated comment
         # x = x.view(x.shape[0], -1)
         x = self.encoder(x)
-        mu, log_var = torch.chunk(x, 2, dim=1)  # 分割获取均值和方差
+        mu, log_var = torch.chunk(x, 2, dim=1)  # Translated comment
         z = self.reparameterize(mu, log_var)
-        # 解码
+        # Translated comment
         return self.decoder(z), mu, log_var
     
     def loss(self, out):
         reconstructed_x, x, mu, log_var = out[0], out[1], out[2], out[3]
-        # 重构损失
+        # Translated comment
         recon_loss = F.binary_cross_entropy(reconstructed_x, x, reduction='sum')
-        # KL散度
+        # Translated comment
         kl_div = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
         return recon_loss + kl_div
     
 class ConvVAE(nn.Module):
     def __init__(self, input_channel, latent_dim):
         super(ConvVAE, self).__init__()
-        # 编码器
+        # encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(input_channel, 16, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(num_features=16),
@@ -160,7 +160,7 @@ class ConvVAE(nn.Module):
 
         self.fc2 = nn.Sequential(
             nn.Linear(1024, latent_dim))
-        # 解码器
+        # decoder
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, 1024),
             nn.Linear(1024, 256 * 4 * 4),
@@ -198,17 +198,17 @@ class ConvVAE(nn.Module):
         return z, mu, log_var
 
     def forward(self, x):
-        # 编码
+        # Translated comment
         x = self.encoder(x)
         mu, log_var = self.fc1(x), self.fc2(x)
         z = self.reparameterize(mu, log_var)
-        # 解码
+        # Translated comment
         return self.decoder(z), mu, log_var
     
 class ConvVAEGroupNorm(nn.Module):
     def __init__(self, latent_dim):
         super(ConvVAEGroupNorm, self).__init__()
-        # 编码器
+        # encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(1, 16, kernel_size=3, stride=2, padding=1),
             # nn.GroupNorm(16, 16),
@@ -237,7 +237,7 @@ class ConvVAEGroupNorm(nn.Module):
 
         self.fc2 = nn.Sequential(
             nn.Linear(1024, latent_dim))
-        # 解码器
+        # decoder
         self.decoder = nn.Sequential(
             nn.Linear(latent_dim, 1024),
             nn.Linear(1024, 256 * 4 * 4),
@@ -269,9 +269,9 @@ class ConvVAEGroupNorm(nn.Module):
         return mu + eps * std
 
     def forward(self, x):
-        # 编码
+        # Translated comment
         x = self.encoder(x)
         mu, log_var = self.fc1(x), self.fc2(x)
         z = self.reparameterize(mu, log_var)
-        # 解码
+        # Translated comment
         return self.decoder(z), mu, log_var

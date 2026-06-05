@@ -129,7 +129,7 @@ class FcaBasicBlock(nn.Module):
                  base_width=64, dilation=1, norm_layer=None,
                  *, reduction=16):
         super(FcaBasicBlock, self).__init__()
-        # 根据输入尺寸 128x128 重新计算后的 c2wh
+        # Translated comment
         c2wh = dict([(64, 64), (128, 32), (256, 16), (512, 8)])
         self.planes = planes
         self.conv1 = nn.Conv2d(inplanes, planes, kernel_size=3, stride=stride, padding=1, bias=False)
@@ -168,7 +168,7 @@ class FcaBasicBlock(nn.Module):
 #     """
 #     model = ResNet(FcaBasicBlock, [2, 2, 2, 2], num_classes=num_classes)
     
-#     # 修改第一层的输入通道数，适应 (10, 128, 128) 的输入
+# Translated comment
 #     model.conv1 = nn.Conv2d(input_channel, 64, kernel_size=7, stride=2, padding=3, bias=False)
 #     model.bn1 = nn.BatchNorm2d(64)
 #     model.relu = nn.ReLU(inplace=True)
@@ -209,24 +209,24 @@ class GroupFCAResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # 第一部分的特征提取
+        # Translated comment
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        # 各层的特征提取
+        # Translated comment
         x = self.layer1(x)
-        x = self.layer2(x)  # 假设在 layer2 之后提取特征
+        x = self.layer2(x)  # Translated comment
         x = self.layer3(x)
         feature_map = self.layer4(x)
 
-        # 分类头
+        # Translated comment
         x = self.avgpool(feature_map)
         x = torch.flatten(x, 1)
         logits = self.fc(x)
 
-        # 返回特征和分类结果
+        # Translated comment
         return logits
     
 class GroupFCAResNet3D(nn.Module):
@@ -261,26 +261,26 @@ class GroupFCAResNet3D(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        # 第一部分的特征提取
+        # Translated comment
         x = self.conv1(x)
         x = self.bn1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
-        # 各层的特征提取
+        # Translated comment
         x = self.layer1(x)
-        x = self.layer2(x)  # 假设在 layer2 之后提取特征
+        x = self.layer2(x)  # Translated comment
         x = self.layer3(x)
         feature_map = self.layer4(x)
 
-        # 分类头
+        # Translated comment
         x = self.avgpool(feature_map)
         x = torch.flatten(x, 1)
         logits = self.fc(x)
 
-        # 返回特征和分类结果
+        # Translated comment
         return logits
-# 定义基本残差块
+# Translated comment
 class BasicBlock(nn.Module):
     expansion = 1
 
@@ -314,10 +314,10 @@ class GroupConv(nn.Module):
     def __init__(self, in_channels=27, group_out_channels=8, final_out_channels=64):
         super(GroupConv, self).__init__()
         
-        # 每组卷积输出通道数
+        # Translated comment
         self.group_out_channels = group_out_channels
         
-        # 定义每组的卷积层
+        # Translated comment
         self.conv1 = nn.Conv2d(7, group_out_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
@@ -328,7 +328,7 @@ class GroupConv(nn.Module):
         self.conv8 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
         self.conv9 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
         
-        # 汇总卷积层
+        # Translated comment
         self.final_conv = nn.Conv2d(group_out_channels * 9, final_out_channels, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
@@ -342,21 +342,21 @@ class GroupConv(nn.Module):
         group8 = x[:, 25:26, :, :]
         group9 = x[:, 26:27, :, :]
         
-        # 分别应用卷积
+        # Translated comment
         out1 = self.conv1(group1)
         out2 = self.conv2(group2)
         out3 = self.conv3(group3)
-        out4 = self.conv4(group4) # 单通道组
+        out4 = self.conv4(group4)  # Translated comment
         out5 = self.conv5(group5)
         out6 = self.conv6(group6)
-        out7 = self.conv7(group7) # 单通道组
+        out7 = self.conv7(group7)  # Translated comment
         out8 = self.conv8(group8)
         out9 = self.conv9(group9) 
         
-        # 拼接结果
+        # Translated comment
         concatenated = torch.cat([out1, out2, out3, out4, out5, out6, out7, out8, out9], dim=1)
         
-        # 汇总卷积
+        # Translated comment
         final_out = self.final_conv(concatenated)
         
         return final_out
@@ -368,7 +368,7 @@ class GroupConv3DRelu(nn.Module):
         self.pre_conv3d = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=(3, 1, 1), padding=(1, 0, 0))
         self.group_out_channels = group_out_channels
         self.relu = nn.ReLU(inplace=True)
-        # 定义每组的卷积层
+        # Translated comment
         self.conv1 = nn.Conv2d(7, group_out_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
@@ -385,7 +385,7 @@ class GroupConv3DRelu(nn.Module):
 
         self.post_conv3d = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=(3, 1, 1), padding=(1, 0, 0))
         
-        # 汇总卷积层
+        # Translated comment
         self.final_conv = nn.Conv2d(group_out_channels * 9, final_out_channels, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
 
@@ -407,7 +407,7 @@ class GroupConv3DRelu(nn.Module):
         group8 = x[:, 25:26, :, :]
         group9 = x[:, 26:27, :, :]
         
-        # 分别应用卷积
+        # Translated comment
         out1 = self.relu(self.conv1(group1))
         out2 = self.relu(self.conv2(group2))
         out3 = self.relu(self.conv3(group3))
@@ -438,7 +438,7 @@ class GroupConv3D(nn.Module):
         self.pre_conv3d = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=(3, 1, 1), padding=(1, 0, 0))
         self.group_out_channels = group_out_channels
         self.relu = nn.ReLU(inplace=True)
-        # 定义每组的卷积层
+        # Translated comment
         self.conv1 = nn.Conv2d(7, group_out_channels, kernel_size=3, padding=1)
         self.conv2 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
         self.conv3 = nn.Conv2d(1, group_out_channels, kernel_size=3, padding=1)
@@ -451,7 +451,7 @@ class GroupConv3D(nn.Module):
 
         self.post_conv3d = nn.Conv3d(in_channels=3, out_channels=3, kernel_size=(3, 1, 1), padding=(1, 0, 0))
         
-        # 汇总卷积层
+        # Translated comment
         self.final_conv = nn.Conv2d(group_out_channels * 9, final_out_channels, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
 
     def forward(self, x):
@@ -471,7 +471,7 @@ class GroupConv3D(nn.Module):
         group8 = x[:, 25:26, :, :]
         group9 = x[:, 26:27, :, :]
         
-        # 分别应用卷积
+        # Translated comment
         out1 = self.conv1(group1)
         out2 = self.conv2(group2)
         out3 = self.conv3(group3)
@@ -495,7 +495,7 @@ class GroupConv3D(nn.Module):
         
         return final_out
 
-# 定义 ResNet18
+# Translated comment
 class GroupResNet(nn.Module):
     def __init__(self, input_channel, block, layers, num_classes=1000):
         super(GroupResNet, self).__init__()
@@ -505,7 +505,7 @@ class GroupResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        # 每个阶段的残差块
+        # Translated comment
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
@@ -558,7 +558,7 @@ class GroupResNet3D(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        # 每个阶段的残差块
+        # Translated comment
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
@@ -614,7 +614,7 @@ class GroupResNet3DRelu(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        # 每个阶段的残差块
+        # Translated comment
         self.layer1 = self._make_layer(block, 64, layers[0])
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
@@ -656,7 +656,7 @@ class GroupResNet3DRelu(nn.Module):
         x = self.fc(x)
 
         return x
-# 实例化 ResNet18
+# Translated comment
 def groupResnet18(num_classes=1000, input_channel=10):
     model = GroupResNet(input_channel, BasicBlock, [2, 2, 2, 2], num_classes=num_classes)
     return model

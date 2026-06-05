@@ -3,20 +3,20 @@ import geemap
 from datetime import datetime, timedelta
 import pandas as pd
 import time
-# 进行认证和初始化
+# Translated comment
 ee.Authenticate()
 ee.Initialize()
 
 def export_sentinel2_image(lon, lat, start_date, end_date, export_path, filename_prefix):
-    # 定义中心点
+    # Translated comment
     point = ee.Geometry.Point(lon, lat)
     
-    # 计算边界范围（512*512像素, 分辨率20米）
-    half_size = 512 * 20 / 2  # 512像素，每像素20米的一半大小（10公里）
+    # Translated comment
+    half_size = 512 * 20 / 2  # Translated comment
     buffer = point.buffer(half_size)
     bounds = buffer.bounds().getInfo()['coordinates'][0]
 
-    # 将日期转换为datetime对象
+    # Translated comment
     start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
     end_date_dt = datetime.strptime(end_date, '%Y-%m-%d')
     
@@ -39,14 +39,14 @@ def export_sentinel2_image(lon, lat, start_date, end_date, export_path, filename
         current_start_date += timedelta(days=1)
 
     if found_images.size().getInfo() == 3:
-        # 选择第一个图像作为示例
+        # Translated comment
         image = ee.Image(found_images.get(0)).clip(buffer)
         
-        # 选择波段 1 - 12
+        # Translated comment
         bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12']
         image = image.select(bands)
         
-        # 定义导出任务
+        # Translated comment
         task = ee.batch.Export.image.toDrive(
             image=image,
             description=filename_prefix,
@@ -57,53 +57,53 @@ def export_sentinel2_image(lon, lat, start_date, end_date, export_path, filename
             crs='EPSG:4326'
         )
         
-        # 启动导出任务
+        # Translated comment
         task.start()
         print(f"Exported image for point ({lon}, {lat}) within date range {start_date} to {end_date}.")
     else:
         print(f"Not enough images for point ({lon}, {lat}) within date range {start_date} to {end_date}.")
 
 def export_single_sentinel2_image(lon, lat, start_date, end_date, export_path, filename_prefix):
-    # 定义中心点
+    # Translated comment
     point = ee.Geometry.Point(lon, lat)
     
-    # 计算边界范围（512*512像素, 分辨率20米）
-    half_size = 512 * 20 / 2  # 512像素，每像素20米的一半大小
+    # Translated comment
+    half_size = 512 * 20 / 2  # Translated comment
     bounds = point.buffer(half_size).bounds().getInfo()['coordinates'][0]
     rect_bounds = [bounds[0][0], bounds[0][1], bounds[2][0], bounds[2][1]]
     square_bounds = ee.Geometry.Rectangle(rect_bounds)
 
-    # 获取日期范围内的Sentinel-2图像集合
+    # Translated comment
     collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
         .filterBounds(square_bounds) \
         .filterDate(start_date, end_date) \
         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) \
         .sort('NODATA_PIXEL_PERCENTAGE', True)
 
-    # 获取符合条件的第一张图像
+    # Translated comment
     image = collection.first()
     
     if image.getInfo():
         image = image.clip(square_bounds)
         
-        # 选择波段 1 - 12
+        # Translated comment
         bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12']
         image = image.select(bands)
 
         image = image.reproject(crs='EPSG:4326', scale=20).clip(square_bounds)
         
-        # 定义导出任务
+        # Translated comment
         task = ee.batch.Export.image.toDrive(
             image=image,
             description='s2',
             folder=export_path,
             fileNamePrefix=filename_prefix,
             region=square_bounds,
-            scale=20,  # 保持20米分辨率
-            crs='EPSG:4326'  # 使用EPSG:4326投影
+            scale=20,  # Translated comment
+            crs='EPSG:4326'  # Translated comment
         )
         
-        # 启动导出任务
+        # Translated comment
         task.start()
         print(f"Exported image for point ({lon}, {lat}) within date range {start_date} to {end_date}.")
         return 1
@@ -112,16 +112,16 @@ def export_single_sentinel2_image(lon, lat, start_date, end_date, export_path, f
         return 0
 
 def export_all_sentinel2_image(lon, lat, start_date, end_date, export_path, filename_prefix):
-    # 定义中心点
+    # Translated comment
     point = ee.Geometry.Point(lon, lat)
     
-    # 计算边界范围（512*512像素, 分辨率20米）
-    half_size = 512 * 20 / 2  # 512像素，每像素20米的一半大小
+    # Translated comment
+    half_size = 512 * 20 / 2  # Translated comment
     bounds = point.buffer(half_size).bounds().getInfo()['coordinates'][0]
     rect_bounds = [bounds[0][0], bounds[0][1], bounds[2][0], bounds[2][1]]
     square_bounds = ee.Geometry.Rectangle(rect_bounds)
 
-    # 获取日期范围内的Sentinel-2图像集合
+    # Translated comment
     collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
         .filterBounds(square_bounds) \
         .filterDate(start_date, end_date) \
@@ -134,25 +134,25 @@ def export_all_sentinel2_image(lon, lat, start_date, end_date, export_path, file
         image = ee.Image(images.get(i))
         image = image.clip(square_bounds)
             
-        # 选择波段 1 - 12
+        # Translated comment
         bands = ['B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B8A', 'B9', 'B11', 'B12']
         image = image.select(bands)
 
         image = image.reproject(crs='EPSG:4326', scale=20).clip(square_bounds)
         
         file_name = filename_prefix + '_' + str(i)
-        # 定义导出任务
+        # Translated comment
         task = ee.batch.Export.image.toDrive(
             image=image,
             description='s2',
             folder=export_path,
             fileNamePrefix=file_name,
             region=square_bounds,
-            scale=20,  # 保持20米分辨率
-            crs='EPSG:4326'  # 使用EPSG:4326投影
+            scale=20,  # Translated comment
+            crs='EPSG:4326'  # Translated comment
         )
         
-        # 启动导出任务
+        # Translated comment
         task.start()
     if total_cnt > 0:
         print(f"total count {total_cnt} Exported image for point ({lon}, {lat}) within date range {start_date} to {end_date}.")
@@ -161,11 +161,11 @@ def export_all_sentinel2_image(lon, lat, start_date, end_date, export_path, file
     return total_cnt
 
 def check_all_exist(lon, lat, date_list):
-    # 定义中心点
+    # Translated comment
     point = ee.Geometry.Point(lon, lat)
     
-    # 计算边界范围（512*512像素, 分辨率20米）
-    half_size = 512 * 20 / 2  # 512像素，每像素20米的一半大小
+    # Translated comment
+    half_size = 512 * 20 / 2  # Translated comment
     bounds = point.buffer(half_size).bounds().getInfo()['coordinates'][0]
     rect_bounds = [bounds[0][0], bounds[0][1], bounds[2][0], bounds[2][1]]
     square_bounds = ee.Geometry.Rectangle(rect_bounds)
@@ -193,7 +193,7 @@ total_pair_count = 0
 
 # tasks = ee.batch.Task.list()
 
-# 遍历最近的5个任务并输出状态
+# Translated comment
 # for task in tasks[:5]:
 #     status = task.status()
 #     print(f"Task ID: {task.id}, State: {status['state']}")

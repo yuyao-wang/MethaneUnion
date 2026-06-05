@@ -6,45 +6,45 @@ from datetime import datetime, timedelta, timezone
 import ee
 import pandas as pd
 
-# ✅ NEW: 用于 bucket 去重
+# Translated comment
 from google.cloud import storage
 
 
-# ====== 用户需要改的配置 ======
+# Translated comment
 RAW_CSV = "/data2/yuyao/methane_emission/carbon_mapper_data/csvs/merged_file.csv"
 
-# 本地用于“判断已下载”的目录（可选）
+# Translated comment
 COMPLEMENT_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_L89_L2SR_by_gee"
 
-# ✅ NEW: 显式给 project，避免 storage.Client() 报 “Project was not passed…”
-# 用你的真实 project id（你之前用的那个）：
+# Translated comment
+# Translated comment
 GCP_PROJECT = "project-eca602a8-5837-4ae6-b4c"
 
-# 导出到 Cloud Storage 的 bucket（必须已存在）
+# Translated comment
 GCS_BUCKET = "l89_bckt"
-# bucket 里的前缀目录（可为空字符串）
+# Translated comment
 GCS_PREFIX = "cm_l89_sr_t1"
 
-# 任务并发控制
+# Translated comment
 MAX_PENDING_TASKS = 200
 PENDING_TASK_SLEEP_SECONDS = 60
 
-# 影像选择与裁剪配置
-CLOUD_COVER_MAX = 20  # 用元数据 CLOUD_COVER
-CHIP_SIZE_PX = 512    # 输出 chip 的像素宽高
-SCALE_M = 30          # Landsat SR 分辨率 30m
+# Translated comment
+CLOUD_COVER_MAX = 20  # Translated comment
+CHIP_SIZE_PX = 512  # Translated comment
+SCALE_M = 30  # Translated comment
 WINDOW_HOURS = 24     # anchor + 24h
 
-# 是否导出“应用缩放系数后的反射率（float）”
+# Translated comment
 EXPORT_SCALED_REFLECTANCE = False
 
-# 是否保持原生投影导出（推荐 True）
+# Translated comment
 USE_NATIVE_CRS = True
 
-# 调试：如果 GCS 扫描卡住，可临时跳过（也可设置环境变量 SKIP_GCS_SCAN=1）
+# Translated comment
 SKIP_GCS_SCAN = False
 
-# 选择导出的波段（Landsat C2 L2 的命名）
+# Translated comment
 SR_BANDS = ["SR_B1", "SR_B2", "SR_B3", "SR_B4", "SR_B5", "SR_B6", "SR_B7"]
 QA_BANDS = ["QA_PIXEL", "QA_RADSAT", "SR_QA_AEROSOL"]
 EXPORT_BANDS = SR_BANDS + QA_BANDS
@@ -59,14 +59,14 @@ def init_gee(project_id="project-eca602a8-5837-4ae6-b4c"):
         ee.Initialize(project=project_id)
 
 def log_step(message: str):
-    # 便于定位卡住的位置
+    # Translated comment
     print(message, flush=True)
 
 def parse_iso_datetime(value: str):
     """
-    解析 merged_file.csv 里的 datetime:
-    例：2019-10-19T14:52:09+00 或 2019-10-24T17:21:32.669192Z
-    返回 timezone-aware datetime（UTC）
+ merged_file.csv datetime:
+ : 2019-10-19T14:52:09+00 2019-10-24T17:21:32.669192Z
+ timezone-aware datetime(UTC)
     """
     if not isinstance(value, str) or len(value) == 0:
         return None
@@ -84,8 +84,8 @@ def parse_iso_datetime(value: str):
 
 def load_downloaded_plume_ids(complement_dir: str):
     """
-    从本地输出目录判断已完成的 plume_id（可选）
-    规则：存在 <plume_id>_l89_sr.tif 或 目录内 l89_sr.tif
+ output directorycomplete plume_id()
+ : <plume_id>_l89_sr.tif directory l89_sr.tif
     """
     if not os.path.isdir(complement_dir):
         return set()
@@ -103,8 +103,7 @@ def load_downloaded_plume_ids(complement_dir: str):
 
 def load_gee_task_plume_ids(suffix: str):
     """
-    从 GEE task 列表里找 READY/RUNNING 的任务，避免重复提交
-    用 description 结尾 suffix 做识别（比如 '_l89_sr'）
+ GEE task READY/RUNNING ,  description suffix ( '_l89_sr')
     """
     plume_ids = set()
     pending_count = 0
@@ -142,8 +141,7 @@ def wait_for_task_capacity(suffix: str):
 
 def build_region(lon: float, lat: float):
     """
-    以像素大小 + 分辨率定义一个正方形 bbox：
-    half_size(m) = CHIP_SIZE_PX * SCALE_M / 2
+ + bbox:     half_size(m) = CHIP_SIZE_PX * SCALE_M / 2
     """
     point = ee.Geometry.Point([lon, lat])
     half_size_m = (CHIP_SIZE_PX * SCALE_M) / 2.0
@@ -152,7 +150,7 @@ def build_region(lon: float, lat: float):
 
 def merge_l89_sr_t1_collection(region, start_dt: datetime, end_dt: datetime):
     """
-    合并 Landsat-8/9 SR Tier 1（Collection 2 Level-2）
+ Landsat-8/9 SR Tier 1(Collection 2 Level-2)
     """
     start_ee = ee.Date(start_dt.isoformat())
     end_ee = ee.Date(end_dt.isoformat())
@@ -194,8 +192,7 @@ def find_best_image(region, anchor_dt: datetime):
 def maybe_scale_reflectance(img):
     """
     Landsat C2 L2 SR: reflectance = SR * 2.75e-05 + (-0.2)
-    QA band 不缩放
-    """
+ QA band     """
     if not EXPORT_SCALED_REFLECTANCE:
         return img
 
@@ -205,13 +202,12 @@ def maybe_scale_reflectance(img):
     return out.copyProperties(img, img.propertyNames())
 
 
-# ========= ✅ NEW: bucket 端去重 =========
+# Translated comment
 def load_gcs_plume_ids(bucket_name: str, prefix: str):
     """
-    从 GCS 扫描已存在的导出对象，解析出 plume_id 集合。
-    我们的导出文件名格式：
-      {prefix}/{plume_id}_l89_sr_{SPACECRAFT}_{YYYYmmddTHHMMSSZ}.tif
-    所以只要匹配到 "_l89_sr_" 之前的部分就是 plume_id。
+ GCS , plume_id .
+ file:       {prefix}/{plume_id}_l89_sr_{SPACECRAFT}_{YYYYmmddTHHMMSSZ}.tif
+ match "_l89_sr_" plume_id.
     """
     plume_ids = set()
 
@@ -219,17 +215,17 @@ def load_gcs_plume_ids(bucket_name: str, prefix: str):
         print("[GCS] SKIP_GCS_SCAN enabled; skip bucket scan.")
         return plume_ids
 
-    # 显式传 project，避免 “Project was not passed …”
+    # Translated comment
     client = storage.Client(project=GCP_PROJECT)
 
-    # list_blobs 的 prefix：如果 prefix 为空就不加 "/"
+    # Translated comment
     gcs_prefix = prefix.strip("/")
     if gcs_prefix:
         list_prefix = gcs_prefix + "/"
     else:
         list_prefix = ""
 
-    # 只扫我们自己的目录，避免全 bucket 扫描太慢
+    # Translated comment
     print(f"[GCS] scanning existing exports in gs://{bucket_name}/{list_prefix} ...")
     start_ts = time.time()
     scanned = 0
@@ -254,8 +250,7 @@ def load_gcs_plume_ids(bucket_name: str, prefix: str):
 
 def export_image_to_gcs(img, region, plume_id: str):
     """
-    导出到 Cloud Storage：
-    文件名带 plume_id + sensor + acquisition time
+ Cloud Storage:  file plume_id + sensor + acquisition time
     """
     img = img.select(EXPORT_BANDS)
     img = img.toUint16()
@@ -272,7 +267,7 @@ def export_image_to_gcs(img, region, plume_id: str):
         .cat(acq_time)
     )
 
-    # prefix（目录）拼接
+    # Translated comment
     if GCS_PREFIX and len(GCS_PREFIX) > 0:
         file_name_prefix = f"{GCS_PREFIX.strip('/')}/" + file_base.getInfo()
     else:
@@ -311,15 +306,15 @@ def main():
 
     suffix = "_l89_sr2"
 
-    # 1) 本地去重（可选）
+    # Translated comment
     log_step("[dedup] scanning local outputs ...")
     existing_plume_ids = load_downloaded_plume_ids(COMPLEMENT_DIR)
 
-    # 2) 任务队列去重（READY/RUNNING）
+    # Translated comment
     log_step("[dedup] checking GEE tasks ...")
     task_plume_ids, pending_tasks = load_gee_task_plume_ids(suffix)
 
-    # 3) ✅ bucket 端去重（已完成的历史导出）
+    # Translated comment
     log_step("[dedup] scanning GCS bucket ...")
     gcs_plume_ids = load_gcs_plume_ids(GCS_BUCKET, GCS_PREFIX)
 
@@ -364,7 +359,7 @@ def main():
         desc, prefix = export_image_to_gcs(img, region, plume_id)
         print(f"export started: task={desc}, gcs_prefix=gs://{GCS_BUCKET}/{prefix}.tif")
 
-        # ✅ 立刻把 plume_id 加入去重集合，避免同一轮重复提交
+        # Translated comment
         existing_plume_ids.add(plume_id)
         pending_tasks += 1
         time.sleep(0.2)

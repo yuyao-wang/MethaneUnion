@@ -144,9 +144,9 @@ class Resize:
         self.target_size = target_size
 
     def __call__(self, sample):
-        # 处理浮点数据的每个通道
+        # Translated comment
         image = np.array([cv2.resize(channel, self.target_size, interpolation=cv2.INTER_LINEAR).astype(np.float32) for channel in sample['image']])
-        # 处理标签的最近邻插值
+        # Translated comment
         label = cv2.resize(sample['label'], self.target_size, interpolation=cv2.INTER_NEAREST).astype(np.float32)
         return {'image': image, 'label': label}
 
@@ -175,7 +175,7 @@ class RandomFlip:
         if random.random() < self.horizontal_prob:
             image_array = np.flip(image_array, axis=2)
         
-        # 随机垂直翻转
+        # Translated comment
         if random.random() < self.vertical_prob:
             image_array = np.flip(image_array, axis=1)
         
@@ -217,21 +217,21 @@ class MethaneGEEL2AClassificationDataset(Dataset):
             # lat_min, lat_max = 30, 35
             # lon_min, lon_max = -105, -100
 
-            # 过滤在范围内的行
+            # Translated comment
             self.df = self.df[(self.df['latitude'] >= lat_min) & (self.df['latitude'] <= lat_max) & 
                             (self.df['longitude'] >= lon_min) & (self.df['longitude'] <= lon_max)]
         elif location_range == 'algeria':
             lat_min, lat_max = 18.96, 37.09
             lon_min, lon_max = -8.67, 11.98
 
-            # 过滤在范围内的行
+            # Translated comment
             self.df = self.df[(self.df['latitude'] >= lat_min) & (self.df['latitude'] <= lat_max) & 
                             (self.df['longitude'] >= lon_min) & (self.df['longitude'] <= lon_max)]
         elif location_range == 'turkmenistan':
             lat_min, lat_max = 35.13, 42.79
             lon_min, lon_max = 52.44, 66.68
 
-            # 过滤在范围内的行
+            # Translated comment
             self.df = self.df[(self.df['latitude'] >= lat_min) & (self.df['latitude'] <= lat_max) & 
                             (self.df['longitude'] >= lon_min) & (self.df['longitude'] <= lon_max)]
         print(f'positive samples ratio {len(self.df[self.df['label'] == 1])} / {len(self.df)}')

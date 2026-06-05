@@ -87,7 +87,7 @@ class CSAClassifier(nn.Module):
         bottleneck = self.bottleneck(self.pool(enc4))
         bottleneck = self.self_attention(bottleneck)
         
-        # 平均池化并展平
+        # Translated comment
         bottleneck = F.adaptive_avg_pool2d(bottleneck, 1).view(bottleneck.size(0), -1)
         out = self.fc(bottleneck)
         

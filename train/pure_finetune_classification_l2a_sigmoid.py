@@ -117,18 +117,18 @@ def train(model, device, train_loader, optimizer, epoch):
             loss = criterion(output, target)
             total_loss += loss.item()
             
-            # 反向传播和优化
+            # Translated comment
             loss.backward()
             optimizer.step()
             
-            # 计算预测结果
+            # Translated comment
             probs = torch.sigmoid(output)
             pred = (probs >= 0.5).float()
             
-            # 统计正确的预测数量
+            # Translated comment
             correct += pred.eq(target).sum().item()
             
-            # 记录预测和目标
+            # Translated comment
             all_preds.extend(pred.cpu().numpy())
             all_targets.extend(target.cpu().numpy())
             tepoch.set_postfix(loss_epoch=loss.item())
@@ -159,13 +159,13 @@ def test(model, device, test_loader, epoch):
                 output = model(data).squeeze()
                 test_loss += criterion(output, target).item()
         
-                # 预测结果
+                # Translated comment
                 probs = torch.sigmoid(output)
-                pred = (probs >= 0.5).float()  # 将概率转换为 0 或 1 的预测值
+                pred = (probs >= 0.5).float()  # Translated comment
                 
                 correct += pred.eq(target).sum().item()
                 
-                # 记录预测和目标
+                # Translated comment
                 all_preds.extend(pred.cpu().numpy())
                 all_targets.extend(target.cpu().numpy())
                 all_probs.append(probs)

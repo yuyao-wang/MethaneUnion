@@ -50,14 +50,14 @@ class FourierTransformModule(nn.Module):
         super(FourierTransformModule, self).__init__()
     
     def forward(self, x):
-        # 对输入特征图进行傅里叶变换
+        # Translated comment
         fft = torch.fft.fft2(x)
-        # 处理频域信息（如应用滤波器或增强特定频率成分）
-        # 在这里可以添加自定义的频域操作
+        # Translated comment
+        # Translated comment
         return fft
     
     def inverse(self, x):
-        # 逆傅里叶变换回到空间域
+        # Translated comment
         ifft = torch.fft.ifft2(x)
         return ifft.real
 
@@ -75,21 +75,21 @@ class FourierAttentionBlock(nn.Module):
         )
     
     def forward(self, x):
-        # 转换到频域
+        # Translated comment
         freq_x = self.fourier_transform(x)
         
-        # 将复数分为实部和虚部
+        # Translated comment
         real_x = freq_x.real
         imag_x = freq_x.imag
         
-        # 分别对实部和虚部应用注意力机制
+        # Translated comment
         real_attention = self.attention_real(real_x)
         imag_attention = self.attention_imag(imag_x)
         
-        # 组合实部和虚部
+        # Translated comment
         combined_attention = torch.complex(real_attention, imag_attention)
         
-        # 逆傅里叶变换回到空间域
+        # Translated comment
         combined_attention = self.fourier_transform.inverse(combined_attention)
         
         return x * combined_attention.real
@@ -107,7 +107,7 @@ class Encoder(nn.Module):
             nn.ReLU(inplace=True),
         )
 
-        # 下采样块1
+        # Translated comment
         self.enc2 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(64, 128, kernel_size=3, padding=1),
@@ -118,7 +118,7 @@ class Encoder(nn.Module):
             nn.ReLU(inplace=True),
         )
         
-        # 下采样块2
+        # Translated comment
         self.enc3 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(128, 256, kernel_size=3, padding=1),
@@ -129,7 +129,7 @@ class Encoder(nn.Module):
             nn.ReLU(inplace=True),
         )
         
-        # 下采样块3
+        # Translated comment
         self.enc4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(256, 512, kernel_size=3, padding=1),
@@ -140,7 +140,7 @@ class Encoder(nn.Module):
             nn.ReLU(inplace=True),
         )
         
-        # 下采样块4
+        # Translated comment
         self.enc5 = nn.Sequential(
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Conv2d(512, 1024, kernel_size=3, padding=1),
@@ -163,7 +163,7 @@ class Decoder(nn.Module):
     def __init__(self, out_channels):
         super(Decoder, self).__init__()
         
-        # 上采样块1
+        # Translated comment
         self.up1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.dec1 = nn.Sequential(
             nn.Conv2d(512, 256, kernel_size=3, padding=1),
@@ -174,7 +174,7 @@ class Decoder(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        # 上采样块2
+        # Translated comment
         self.up2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         self.dec2 = nn.Sequential(
             nn.Conv2d(256, 128, kernel_size=3, padding=1),
@@ -185,7 +185,7 @@ class Decoder(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        # 上采样块3
+        # Translated comment
         self.up3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.dec3 = nn.Sequential(
             nn.Conv2d(128, 64, kernel_size=3, padding=1),
@@ -196,12 +196,12 @@ class Decoder(nn.Module):
             nn.ReLU(inplace=True)
         )
         
-        # 最终输出层
+        # Translated comment
         self.final = nn.Conv2d(64, out_channels, kernel_size=1)
     
     def forward(self, e4, e3, e2, e1):
         d1 = self.up1(e4)
-        d1 = torch.cat([d1, e3], dim=1)  # 跳跃连接，拼接特征图
+        d1 = torch.cat([d1, e3], dim=1)  # Translated comment
         d1 = self.dec1(d1)
         
         d2 = self.up2(d1)
@@ -212,7 +212,7 @@ class Decoder(nn.Module):
         d3 = torch.cat([d3, e1], dim=1)
         d3 = self.dec3(d3)
         
-        out = self.final(d3)  # 最终输出
+        out = self.final(d3)  # Translated comment
         
         return out
 
@@ -229,14 +229,14 @@ class DecoderBlock(nn.Module):
     
     def forward(self, x, skip_connection):
         # x = self.upconv(x)
-        x = torch.cat([x, skip_connection], dim=1)  # 跳跃连接
+        x = torch.cat([x, skip_connection], dim=1)  # Translated comment
         x = self.conv_block(x)
         return x
 
 class Bottleneck(nn.Module):
     def __init__(self):
         super(Bottleneck, self).__init__()
-        self.pool = nn.MaxPool2d(2)  # 进一步池化
+        self.pool = nn.MaxPool2d(2)  # Translated comment
         self.bottleneck = nn.Sequential(
             nn.Conv2d(512, 1024, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -264,35 +264,35 @@ class AttentionFilterUNet(nn.Module):
         self.upconv4 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.decoder4 = DecoderBlock(128, 64)
         # self.upconv5 = nn.ConvTranspose2d(64, 64, kernel_size=2, stride=2)
-        # 频域注意力块
+        # Translated comment
         self.fourier_attention1 = FourierAttentionBlock(512)
         self.fourier_attention2 = FourierAttentionBlock(256)
         self.fourier_attention3 = FourierAttentionBlock(128)
         self.fourier_attention4 = FourierAttentionBlock(64)
         
-        # 空间域注意力块
+        # Translated comment
         self.spatial_attention1 = AttentionBlock(F_g=512, F_l=512, F_int=512)
         self.spatial_attention2 = AttentionBlock(F_g=256, F_l=256, F_int=256)
         self.spatial_attention3 = AttentionBlock(F_g=128, F_l=128, F_int=128)
         self.spatial_attention4 = AttentionBlock(F_g=64, F_l=64, F_int=64)
 
-        # 过滤门
+        # Translated comment
         self.filter_gate1 = FilterGate(512)
         self.filter_gate2 = FilterGate(256)
         self.filter_gate3 = FilterGate(128)
         self.filter_gate4 = FilterGate(64)
 
-        # 最终输出层
+        # Translated comment
         self.final = nn.Conv2d(64, out_channels, kernel_size=1)
 
     def forward(self, x):
-        # 编码器部分
+        # Translated comment
         e1, e2, e3, e4, e5 = self.encoder(x)
         
-        # Bottleneck部分
+        # Translated comment
         # bottleneck = self.bottleneck(e4)
         
-        # 频域注意力机制与解码器
+        # Translated comment
         up1 = self.upconv1(e5)
         freq_bottleneck = self.fourier_attention1(up1)
         # print(f'shape of freq_bottleneck {freq_bottleneck.shape}, shape of e4 {e4.shape}')
@@ -315,20 +315,20 @@ class AttentionFilterUNet(nn.Module):
         d4 = self.decoder4(freq_d3, e1)
 
         # print(f'shape of d4 {d4.shape}')
-        # 空间域注意力机制
+        # Translated comment
         spatial_d1 = self.spatial_attention1(up1, e4)
         spatial_d2 = self.spatial_attention2(up2, e3)
         spatial_d3 = self.spatial_attention3(up3, e2)
         spatial_d4 = self.spatial_attention4(up4, e1)
 
         # print(f'shape of spatial_d1 {spatial_d4.shape}')
-        # 将频域和空间域的结果融合
+        # Translated comment
         combined_d1 = self.filter_gate1(d1 + spatial_d1)
         combined_d2 = self.filter_gate2(d2 + spatial_d2)
         combined_d3 = self.filter_gate3(d3 + spatial_d3)
         combined_d4 = self.filter_gate4(d4 + spatial_d4)
 
         # print(f'shape of spatial_d1 {combined_d4.shape}')
-        # 最终输出
+        # Translated comment
         out = self.final(combined_d4)
         return out

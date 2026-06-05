@@ -11,8 +11,8 @@ from pathlib import Path
 from pyproj import Transformer
 from scipy.spatial import KDTree as CPU_KDTree
 
-os.umask(0) # 允许创建的文件拥有最大权限 (777)
-# ==================== 用户配置区 ====================
+os.umask(0)  # Translated comment
+# ==================== user configuration section ====================
 CSV_PATH = "./merged_with_emit_tag.csv"
 SRF_CSV = "./landsat9_oli_srf.csv"
 EMIT_RAW_DIR = Path("/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_EMIT")
@@ -54,7 +54,7 @@ def main():
     df = pd.read_csv(CSV_PATH)
     srf_df = pd.read_csv(SRF_CSV)
     
-    # 筛选目标数据
+    # Translated comment
     mask = (df['plume_latitude'] >= 30) & (df['plume_latitude'] <= 35) & (df['has_emit'] == 1)
     target_df = df[mask]
     
@@ -79,7 +79,7 @@ def main():
         print(f"\n[Processing] {plume_id}")
 
         try:
-            # 1. 空间范围裁剪计算
+            # Translated comment
             with xr.open_dataset(rfl_path, group='location', engine='netcdf4') as ds_loc:
                 lats, lons = ds_loc['lat'].values, ds_loc['lon'].values
                 mask_spatial = (lats > row['plume_latitude'] - 0.15) & (lats < row['plume_latitude'] + 0.15) & \
@@ -93,7 +93,7 @@ def main():
                 y_min, y_max, x_min, x_max = y_idxs.min(), y_idxs.max(), x_idxs.min(), x_idxs.max()
                 lat_crop, lon_crop = lats[y_min:y_max, x_min:x_max], lons[y_min:y_max, x_min:x_max]
 
-            # 2. 读取反射率并初始化卷积矩阵
+            # Translated comment
             with xr.open_dataset(rfl_path, engine='netcdf4') as ds:
                 rfl_crop = ds['reflectance'][y_min:y_max, x_min:x_max, :].values
                 
@@ -101,7 +101,7 @@ def main():
                 with xr.open_dataset(rfl_path, group='sensor_band_parameters') as dsb:
                     spectral_matrix = get_spectral_matrix(dsb['wavelengths'].values, srf_df)
 
-            # 3. GPU 卷积与分波段动态拉伸
+            # Translated comment
             cp_rfl = cp.array(np.nan_to_num(rfl_crop, 0))
             sim_conv = cp.matmul(cp_rfl, spectral_matrix) # (Y, X, 7)
             
@@ -113,21 +113,21 @@ def main():
                 if valid_mask.any():
                     p_low = cp.percentile(band_data[valid_mask], 1)
                     p_high = cp.percentile(band_data[valid_mask], 99)
-                    # 线性拉伸
+                    # Translated comment
                     stretched = (band_data - p_low) / (p_high - p_low + 1e-6)
                 else:
                     stretched = band_data
 
-                # 应用你调整后的参数：80% Offset + 60% Scale
+                # Translated comment
                 offset = target_scales[b] * 0.8
                 final_band = (stretched * (target_scales[b] * 0.6)) + offset
-                # 保持背景为0
+                # Translated comment
                 final_band = cp.where(band_data > 0, final_band, 0)
                 cp_simulated_list.append(cp.clip(final_band, 0, 65535))
             
             cp_simulated = cp.stack(cp_simulated_list, axis=0) # (7, Y, X)
 
-            # 4. 空间重采样 (KDTree)
+            # Translated comment
             utm_epsg = get_utm_crs(row['plume_latitude'], row['plume_longitude'])
             to_utm = Transformer.from_crs("EPSG:4326", utm_epsg, always_xy=True)
             to_wgs = Transformer.from_crs(utm_epsg, "EPSG:4326", always_xy=True)
@@ -143,13 +143,13 @@ def main():
             tree = CPU_KDTree(np.stack([lat_crop.ravel(), lon_crop.ravel()], axis=1))
             dist, indices = tree.query(np.stack([t_lat.ravel(), t_lon.ravel()], axis=1), distance_upper_bound=0.001)
             
-            # 5. 映射与掩膜
+            # Translated comment
             cp_indices = cp.array(indices)
             final_output = cp_simulated.reshape(7, -1)[:, cp_indices].reshape(7, CHIP_SIZE_PX, CHIP_SIZE_PX)
             invalid_mask = cp.array(dist == float('inf')).reshape(CHIP_SIZE_PX, CHIP_SIZE_PX)
             final_output[:, invalid_mask] = 0
 
-            # 6. 保存为 TIF
+            # Translated comment
             res_np = final_output.get().astype(np.uint16)
             sim_da = xr.DataArray(
                 res_np,
@@ -161,7 +161,7 @@ def main():
             
             print(f"   [Success] Saved: {out_tif.name} | Mean: {res_np.mean():.0f}")
 
-            # 清理显存和内存
+            # Translated comment
             del cp_rfl, sim_conv, cp_simulated, cp_simulated_list, final_output, rfl_crop, tree, res_np, sim_da
             cp.get_default_memory_pool().free_all_blocks()
             gc.collect()

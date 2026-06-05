@@ -55,7 +55,7 @@ def process_single_row(row):
     local_results = []
     
     try:
-        # 读取原始时序数据
+        # Translated comment
         t0 = ensure_chw(tifffile.imread(row["l89_0_std_512"]))
         t1 = ensure_chw(tifffile.imread(row["l89_-90_std_512"]))
         t2 = ensure_chw(tifffile.imread(row["l89_-360_std_512"]))
@@ -63,7 +63,7 @@ def process_single_row(row):
     except Exception as e:
         return []
 
-    # 辅助函数：检查切片是否有效（无缺失像素）
+    # Translated comment
     def is_valid_crop(crop):
         if crop.size == 0: return False
         return (np.isnan(crop[0]) | (crop[0] == 0)).mean() <= MISSING_THRESH
@@ -78,7 +78,7 @@ def process_single_row(row):
         x, y = random.randint(p_start_min, p_start_max), random.randint(p_start_min, p_start_max)
         c0, c1, c2 = t0[:, y:y+OS_SIZE, x:x+OS_SIZE], t1[:, y:y+OS_SIZE, x:x+OS_SIZE], t2[:, y:y+OS_SIZE, x:x+OS_SIZE]
         
-        # 正样本必须保证三个时段都相对完整
+        # Translated comment
         if not (is_valid_crop(c0) and is_valid_crop(c1) and is_valid_crop(c2)):
             continue
             
@@ -93,7 +93,7 @@ def process_single_row(row):
         out_path = os.path.join(BASE_DIR, str(this_id))
         os.makedirs(out_path, exist_ok=True)
         
-        # 物理保存文件
+        # write files to diskfile
         p0, p90, p360 = os.path.join(out_path, "l89_0.tif"), os.path.join(out_path, "l89_90.tif"), os.path.join(out_path, "l89_360.tif")
         tifffile.imwrite(p0, up0); tifffile.imwrite(p90, up1); tifffile.imwrite(p360, up2)
         tifffile.imwrite(os.path.join(out_path, "plume.tif"), m_up)
@@ -107,14 +107,14 @@ def process_single_row(row):
 
     # --- NEGATIVE SAMPLES ---
     neg_count, attempts = 0, 0
-    while neg_count < N_NEG and attempts < 200: # 负样本不合格时通过循环重新 Crop
+    while neg_count < N_NEG and attempts < 200:  # Translated comment
         attempts += 1
         x, y = random.randint(0, 512-OS_SIZE), random.randint(0, 512-OS_SIZE)
         if (x <= 256 <= x+OS_SIZE) and (y <= 256 <= y+OS_SIZE): continue
 
         c0, c1, c2 = t0[:, y:y+OS_SIZE, x:x+OS_SIZE], t1[:, y:y+OS_SIZE, x:x+OS_SIZE], t2[:, y:y+OS_SIZE, x:x+OS_SIZE]
         
-        # 关键改进：如果负样本时序不全，重新采样
+        # Translated comment
         if not (is_valid_crop(c0) and is_valid_crop(c1) and is_valid_crop(c2)):
             continue
 
@@ -152,25 +152,25 @@ def save_visual_check(idx, t0, t0_up, mask, mask_up):
 # Main execution
 # =========================
 def get_start_cnt(base_dir):
-    """检查已经生成的文件夹，防止覆盖"""
+    """Translated to English."""
     existing_ids = [int(d) for d in os.listdir(base_dir) if d.isdigit()]
     return max(existing_ids) if existing_ids else 0
 
-# 在执行前初始化
+# Translated comment
 os.makedirs(BASE_DIR, exist_ok=True)
 global_cnt = get_start_cnt(BASE_DIR)
 print(f"Current max ID in storage: {global_cnt}. New samples will start from {global_cnt + 1}")
 
 counter_lock = threading.Lock()
-visual_done = 0 # 视觉检查可以重新生成
+visual_done = 0  # Translated comment
 
 # =========================
-# 修改后的主执行函数
+# Translated comment
 # =========================
 def process_all():
     global global_cnt
     
-    # 1. 读取输入并加载已有的 manifest (如果存在)
+    # Translated comment
     df = pd.read_csv(INPUT_CSV).dropna(subset=['mask_path'])
     manifest_path = os.path.join(BASE_DIR, "dataset_manifest.csv")
     
@@ -186,7 +186,7 @@ def process_all():
         except:
             print("Manifest exists but could not be read. Starting fresh.")
 
-    # 2. 过滤掉已经处理过的 plume_id
+    # Translated comment
     df_to_process = df[~df['plume_id'].isin(processed_plume_ids)]
     
     if len(df_to_process) == 0:
@@ -195,11 +195,11 @@ def process_all():
 
     print(f"Remaining rows to process: {len(df_to_process)}")
 
-    # 3. 并行处理
+    # 3. parallelprocess
     with ThreadPoolExecutor(max_workers=NUM_WORKERS) as executor:
         rows = [row for _, row in df_to_process.iterrows()]
         
-        # 使用 as_completed 或简单的循环来实时获取结果
+        # Translated comment
         pbar = tqdm(total=len(rows))
         for res_list in executor.map(process_single_row, rows):
             if res_list:
@@ -207,11 +207,11 @@ def process_all():
             
             pbar.update(1)
             
-            # 每处理 50 个原始行，强制存一次盘，防止崩溃
+            # Translated comment
             if pbar.n % 50 == 0:
                 pd.DataFrame(all_data).to_csv(manifest_path, index=False)
     
-    # 最后存一次全量数据
+    # Translated comment
     final_df = pd.DataFrame(all_data)
     final_df.to_csv(manifest_path, index=False)
     print(f"Finished. Total samples in manifest: {len(final_df)}")

@@ -15,7 +15,7 @@ COMPLEMENT_DIR = "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_
 
 GCP_PROJECT = "project-eca602a8-5837-4ae6-b4c"
 GCS_BUCKET = "l89_bckt"
-GCS_PREFIX = "cm_l89_90360_sr_t1_m90_m360"  # 建议换个新前缀
+GCS_PREFIX = "cm_l89_90360_sr_t1_m90_m360"  # Translated comment
 
 MAX_PENDING_TASKS = 200
 PENDING_TASK_SLEEP_SECONDS = 60

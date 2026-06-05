@@ -5,20 +5,20 @@ class SEBlock(nn.Module):
     def __init__(self, in_channels, reduction=16):
         super(SEBlock, self).__init__()
         self.se = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),  # 全局平均池化，输出大小为 1x1
-            nn.Conv2d(in_channels, in_channels // reduction, kernel_size=1),  # 降低维度
+            nn.AdaptiveAvgPool2d(1),  # Translated comment
+            nn.Conv2d(in_channels, in_channels // reduction, kernel_size=1),  # Translated comment
             nn.ReLU(inplace=True),
-            nn.Conv2d(in_channels // reduction, in_channels, kernel_size=1),  # 恢复维度
+            nn.Conv2d(in_channels // reduction, in_channels, kernel_size=1),  # Translated comment
             nn.Sigmoid()
         )
 
     def forward(self, x):
-        # Squeeze操作
+        # Translated comment
         se_weight = self.se(x)
-        # Excitation操作
-        return x * se_weight  # 对每个通道加权
+        # Translated comment
+        return x * se_weight  # Translated comment
 
-# ResNet的基本块（用于ResNet-18和ResNet-34）
+# Translated comment
 class SEBasicBlock(nn.Module):
     expansion = 1
 
@@ -29,7 +29,7 @@ class SEBasicBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(out_channels)
-        self.se = SEBlock(out_channels, reduction)  # 集成SE模块
+        self.se = SEBlock(out_channels, reduction)  # Translated comment
         self.downsample = downsample
 
     def forward(self, x):
@@ -42,7 +42,7 @@ class SEBasicBlock(nn.Module):
         out = self.conv2(out)
         out = self.bn2(out)
 
-        out = self.se(out)  # 使用SE模块
+        out = self.se(out)  # Translated comment
 
         if self.downsample is not None:
             identity = self.downsample(x)
@@ -52,7 +52,7 @@ class SEBasicBlock(nn.Module):
 
         return out
 
-# ResNet-50及以上版本的Bottleneck块
+# Translated comment
 class SEBottleneck(nn.Module):
     expansion = 4
 
@@ -65,7 +65,7 @@ class SEBottleneck(nn.Module):
         self.conv3 = nn.Conv2d(out_channels, out_channels * self.expansion, kernel_size=1, bias=False)
         self.bn3 = nn.BatchNorm2d(out_channels * self.expansion)
         self.relu = nn.ReLU(inplace=True)
-        self.se = SEBlock(out_channels * self.expansion, reduction)  # 集成SE模块
+        self.se = SEBlock(out_channels * self.expansion, reduction)  # Translated comment
         self.downsample = downsample
 
     def forward(self, x):
@@ -82,7 +82,7 @@ class SEBottleneck(nn.Module):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        out = self.se(out)  # 使用SE模块
+        out = self.se(out)  # Translated comment
 
         if self.downsample is not None:
             identity = self.downsample(x)
@@ -92,7 +92,7 @@ class SEBottleneck(nn.Module):
 
         return out
 
-# 构建SEResNet模型
+# Translated comment
 class SEResNet(nn.Module):
     def __init__(self, block, layers, in_channel = 30, num_classes=1000, reduction=16):
         super(SEResNet, self).__init__()

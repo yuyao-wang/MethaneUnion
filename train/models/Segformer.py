@@ -96,8 +96,8 @@ class SegFormerWrapper(torch.nn.Module):
     def forward(self, pixel_values):
         outputs = self.model(pixel_values=pixel_values)
         logits = outputs.logits
-        # 强制调整输出为与输入相同尺寸
-        input_height, input_width = pixel_values.shape[2:]  # 获取输入尺寸
+        # Translated comment
+        input_height, input_width = pixel_values.shape[2:]  # Translated comment
         if logits.shape[-2:] != (input_height, input_width):
             logits = torch.nn.functional.interpolate(
                 logits, size=(input_height, input_width), mode="bilinear", align_corners=False
@@ -105,18 +105,18 @@ class SegFormerWrapper(torch.nn.Module):
         return logits
 
 def segformer(num_channels = 27, num_labels = 1):
-    # 定义 SegFormer-B0 的配置
+    # Translated comment
     config = SegformerConfig(
-        num_channels=num_channels,  # 输入通道数
-        num_labels=num_labels,     # 输出通道数 (1 表示单通道 mask)
-        hidden_sizes=[32, 64, 160, 256],  # 每个阶段的隐藏层大小 (SegFormer-B0)
-        depths=[2, 2, 2, 2],              # 每个阶段的 Transformer Block 数量
-        patch_sizes=[7, 3, 3, 3],         # 每个阶段的 patch 大小
-        strides=[4, 2, 2, 2],             # 每个阶段的 stride
-        decoder_hidden_size=256,           # 解码器隐藏层大小
+        num_channels=num_channels,  # Translated comment
+        num_labels=num_labels,  # Translated comment
+        hidden_sizes=[32, 64, 160, 256],  # Translated comment
+        depths=[2, 2, 2, 2],  # Translated comment
+        patch_sizes=[7, 3, 3, 3],  # Translated comment
+        strides=[4, 2, 2, 2],  # Translated comment
+        decoder_hidden_size=256,  # Translated comment
         image_size=128
     )
 
-    # 初始化 SegFormer 模型
+    # initialize SegFormer model
     model = SegFormerWrapper(config)
     return model

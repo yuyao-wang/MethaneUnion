@@ -33,8 +33,8 @@ CLOUD_COVER_MAX = 20.0
 WINDOW_SIZE = 512
 MAX_WORKERS = 6
 
-# ✅ 尽量不丢样本：允许最大 shift = 256 (=512/2)
-# 只要影像本身能提供 512x512，就尽量生成，不 padding
+# Translated comment
+# Translated comment
 MAX_CENTER_SHIFT_PX = WINDOW_SIZE // 2
 
 # 20m bands
@@ -42,11 +42,11 @@ BAND_ORDER = ["B1","B2","B3","B4","B5","B6","B7","B8","B8A","B9","B11","B12"]
 BAND_TO_INDEX = {b:i for i,b in enumerate(BAND_ORDER)}
 JP2_BAND_RE = re.compile(r".*_(B[0-9]{1,2}|B8A)_20m\.jp2$")
 
-# CDSE 账号（环境变量）
+# Translated comment
 CDSE_USER = os.environ.get("CDSE_USER", "")
 CDSE_PASS = os.environ.get("CDSE_PASS", "")
 if not CDSE_USER or not CDSE_PASS:
-    print("[WARN] CDSE_USER / CDSE_PASS 环境变量未设置。请先：")
+ print("[WARN] CDSE_USER / CDSE_PASS .: ")
     print("  export CDSE_USER='xxx' ; export CDSE_PASS='xxx'")
 
 # =========================
@@ -134,7 +134,7 @@ class RateLimiter:
 
 zipper_rl = RateLimiter(ZIPPER_MIN_INTERVAL_SEC)
 
-# 同一产品互斥：prod_name -> lock
+# Translated comment
 _product_locks = defaultdict(threading.Lock)
 
 def request_with_retry(method, url, session: requests.Session, *,
@@ -319,7 +319,7 @@ def select_previous_overpass(products, event_dt: datetime):
 def download_product_zip(token: str, product_id: str, out_zip: str):
     url = f"https://zipper.dataspace.copernicus.eu/odata/v1/Products({product_id})/$value"
 
-    # 已经有完整 zip 就跳过
+    # Translated comment
     if os.path.exists(out_zip) and os.path.getsize(out_zip) > 0:
         return
 
@@ -387,8 +387,8 @@ def latlon_to_pixel(lat, lon, dataset):
 def compute_window_with_limited_shift(ds, center_lat: float, center_lon: float,
                                       window_size: int, max_shift_px: int):
     """
-    不 padding；允许 clamp 产生 shift，但限制 shift 不要太离谱。
-    为了“尽量不丢样本”，max_shift_px 默认设为 256 (=512/2)。
+ padding; clamp shift, shift .
+ "sample", max_shift_px 256 (=512/2).
     """
     col, row = latlon_to_pixel(center_lat, center_lon, ds)
     half = window_size // 2
@@ -396,14 +396,14 @@ def compute_window_with_limited_shift(ds, center_lat: float, center_lon: float,
     col0 = int(np.floor(col)) - half
     row0 = int(np.floor(row)) - half
 
-    # clamp 到合法范围
+    # Translated comment
     col0c = min(max(col0, 0), max(0, ds.width - window_size))
     row0c = min(max(row0, 0), max(0, ds.height - window_size))
 
     shift_c = abs(col0c - col0)
     shift_r = abs(row0c - row0)
 
-    # 如果影像本身比 512 还小，也会导致 window 无法成立
+    # Translated comment
     if ds.width < window_size or ds.height < window_size:
         return None
 
@@ -415,11 +415,9 @@ def compute_window_with_limited_shift(ds, center_lat: float, center_lon: float,
 def build_s2_12band_tif(extracted_dir: str, center_lat, center_lon,
                         out_tif: str, max_shift_px: int):
     """
-    关键点：
-      - 用一个参考 band 计算 window（一次）
-      - 所有 band 用同一个 window 读取，保证对齐
-      - 不 padding；读出来不是 512 就失败
-    返回 (out_array, shift_c, shift_r, has_shift) 或 None
+ :  - band window()
+ - band window load,  - padding; 512 failure
+ (out_array, shift_c, shift_r, has_shift) None
     """
     jp2_files = list(Path(extracted_dir).glob("*.jp2"))
     band_paths = {}
@@ -431,7 +429,7 @@ def build_s2_12band_tif(extracted_dir: str, center_lat, center_lon,
         if b in BAND_TO_INDEX:
             band_paths[b] = str(p)
 
-    # 选一个参考 band（尽量选择常见且稳定存在的）
+    # Translated comment
     ref_path = None
     for b in ["B11", "B12", "B8A", "B8", "B4", "B3", "B2", "B1"]:
         if b in band_paths:
@@ -451,7 +449,7 @@ def build_s2_12band_tif(extracted_dir: str, center_lat, center_lon,
 
     out = np.zeros((len(BAND_ORDER), WINDOW_SIZE, WINDOW_SIZE), dtype=np.float32)
 
-    # 同一 window 读所有 band（缺 band 置 0）
+    # Translated comment
     for bname, idx in BAND_TO_INDEX.items():
         p = band_paths.get(bname)
         if not p:
@@ -490,7 +488,7 @@ def process_one(row, token_obj: RefreshableAccessToken):
     plume_dir = os.path.join(BASE_DIR, plume_id)
     out_tif = os.path.join(plume_dir, "s2_-7.tif")
 
-    # 已有最终产物：跳过
+    # Translated comment
     if os.path.exists(out_tif) and os.path.getsize(out_tif) > 0:
         return {
             "plume_id": plume_id, "ok": 1, "skipped": 1,
@@ -519,7 +517,7 @@ def process_one(row, token_obj: RefreshableAccessToken):
     extract_marker = os.path.join(prod_dir, ".extract_complete")
     safe_mkdir(RAW_DIR)
 
-    # 同一产品互斥：只下载/解压一次
+    # Translated comment
     with _product_locks[prod_name]:
         if not os.path.exists(extract_marker):
             if (not os.path.exists(zip_path)) or (os.path.getsize(zip_path) == 0):
@@ -538,7 +536,7 @@ def process_one(row, token_obj: RefreshableAccessToken):
 
     arr, shift_c, shift_r, has_shift = built
 
-    # 统计缺失 band（全 0）
+    # Translated comment
     zero_ratio = (arr == 0).reshape(arr.shape[0], -1).mean(axis=1)
     missing = [BAND_ORDER[i] for i, zr in enumerate(zero_ratio) if zr >= 0.999]
 
@@ -553,7 +551,7 @@ def process_one(row, token_obj: RefreshableAccessToken):
         "s2_minus7_raw_dir": prod_dir,
         "s2_minus7_tif": out_tif,
         "s2_minus7_missing_bands": ",".join(missing),
-        # ✅ 记录 shift
+        # ✅ record shift
         "s2_minus7_center_shift_col_px": int(shift_c),
         "s2_minus7_center_shift_row_px": int(shift_r),
         "s2_minus7_has_shift": int(has_shift),
@@ -566,7 +564,7 @@ if __name__ == "__main__":
     debug("script start")
     df = pd.read_csv(IN_CSV)
 
-    # 只处理已有 S2_path 且文件存在的样本
+    # Translated comment
     df["S2_path_abs"] = df["S2_path"].apply(resolve_s2_path)
     mask = df["S2_path_abs"].apply(lambda p: isinstance(p, str) and len(p) > 0 and os.path.exists(p))
     work_df = df[mask].copy()
@@ -624,7 +622,7 @@ if __name__ == "__main__":
 
     res_df = pd.DataFrame(results)
 
-    # 合并回原 df（按 plume_id）
+    # Translated comment
     out_df = df.copy()
     new_cols = [
         "s2_minus7_datetime",
