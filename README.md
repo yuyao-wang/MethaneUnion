@@ -1,5 +1,3 @@
-# MethaneUnion
-
 <p align="center">
   <img src="Pictures/methaneunion_pipeline.png" alt="MethaneUnion dataset construction pipeline" width="100%">
 </p>
