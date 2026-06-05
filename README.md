@@ -123,8 +123,6 @@ sensor_crop_paths
 split
 ```
 
-The exact file schema can be documented in a future `docs/data_schema.md`.
-
 ## Splits
 
 MethaneUnion provides two event-level split protocols:
