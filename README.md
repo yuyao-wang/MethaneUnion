@@ -1,12 +1,10 @@
-# MethaneUnion
+<p align="center">
+  <img src="Pictures/methaneunion_pipeline.png" alt="MethaneUnion dataset construction pipeline" width="100%">
+</p>
 
 **MethaneUnion** is an event-centered partial multi-sensor satellite dataset for methane plume detection.
 
 MethaneUnion is built from Carbon Mapper plume reports and matched satellite observations from Sentinel-2, Landsat 8/9, EMIT, and Sentinel-5P. The dataset is designed for partial-observation learning, where each plume event is associated with only the subset of sensors naturally available at the target location and time.
-
-<p align="center">
-  <img src="Pictures/methaneunion_pipeline.png" alt="MethaneUnion dataset construction pipeline" width="95%">
-</p>
 
 ## Overview
 
