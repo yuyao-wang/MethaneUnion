@@ -82,6 +82,7 @@ MethaneUnion/
 ├── data_csv/                        # CSV manifests and split-related tables
 ├── data_downloading/                # Data acquisition utilities
 ├── data_preprocess/                 # Shared preprocessing code
+├── methaneunion/                    # Minimal released-dataset loader
 ├── preprocess_dataset_EMIT/         # EMIT preprocessing pipeline
 ├── preprocess_dataset_L89/          # Landsat 8/9 preprocessing pipeline
 ├── preprocess_dataset_multisensor/  # Multi-sensor matching and fusion prep
@@ -136,13 +137,50 @@ Both splits are applied before crop and query construction.
 
 ## Usage
 
-This repository currently focuses on dataset construction, preprocessing, and training code. Typical usage is:
+The repository now includes a minimal Python loader for the released split CSVs and sensor files:
 
-1. Download or access the processed MethaneUnion data.
-2. Use the preprocessing scripts in `preprocess_dataset_*` and `preprocess_dataset_query_multi/` to build sensor-specific crops and query manifests.
-3. Use the training code under `train/` with the generated manifests and splits.
+```python
+from methaneunion import MethaneUnionDataset
 
-If you want a package-style dataset loader, add a dedicated loader module and document its manifest schema in `docs/`.
+dataset = MethaneUnionDataset(
+    root="data/MethaneUnion",
+    split="test",
+    scale_m=480,
+    sensors=["S2", "L89", "EMIT", "S5P"],
+)
+
+sample = dataset[0]
+print(sample.keys())
+print(sample["loaded_sensors"])
+print(sample["observations"]["S2"]["data"]["t0"].shape)
+```
+
+`MethaneUnionDataset` reads the official release layout directly:
+
+```text
+data/MethaneUnion/
+├── datasets/
+│   └── temporal_split/
+│       └── 480m_GSD/
+│           └── test.csv
+├── data/...                         # extracted files, optional
+└── dataset_part_001.tar.gz          # original archives, also supported
+```
+
+The loader supports either:
+
+1. Extracted sensor files under `root/data/...`, or
+2. The original `dataset_part_*.tar.gz` archives without extraction.
+
+Each returned sample contains:
+
+- `id`, `label`, `latitude`, `longitude`
+- `available_sensors` from the CSV
+- `loaded_sensors` after applying the requested `sensors=[...]` filter
+- `observations`, where each sensor exposes loaded arrays plus the original relative paths
+- `metadata`, the raw CSV row as a dictionary
+
+`split_scheme="temporal"` is the default. Pass `split_scheme="geo"` to read `datasets/geo_split/...` instead.
 
 ## Relation to MethaneFuse
 
