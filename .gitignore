@@ -29,3 +29,5 @@ data/pretrain
 /Pictures/CM_s2_l8_s2.tar.gz
 /csvs
 /preprocess_dataset_L89/local_emit_buffer
+__pycache__/
+*.pyc
