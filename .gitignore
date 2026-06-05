@@ -31,3 +31,7 @@ data/pretrain
 /preprocess_dataset_L89/local_emit_buffer
 __pycache__/
 *.pyc
+.vscode/
+.idea/
+settings.json
+*.code-workspace
