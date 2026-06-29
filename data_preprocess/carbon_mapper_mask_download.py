@@ -5,8 +5,8 @@ import requests
 import time
 import random
 
-base_dir = '/data2/yuyao/methane_emission/carbon_mapper_data_masks'
-df = pd.read_csv('/data2/yuyao/methane_emission/carbon_mapper_data/csvs/merged_file.csv')
+base_dir = '/mnt/engg-niulab/Yuyao/sensors_raw_data/CM'
+df = pd.read_csv('/home/yuyao/methane_train/Upgrade_data_pipeline/csv/carbon_mapper_plumes_20160101_20260530_with_plume_tif.csv')
 
 def download_tif(url, path):
     print(f'now downloading file {url}')
@@ -14,9 +14,9 @@ def download_tif(url, path):
     if response.status_code == 200:
         with open(path, 'wb') as file:
             file.write(response.content)
- print(f'filedownloadsavesuccess')
+        print(f'filedownloadsavesuccess')
     else:
- print(f'download{url}, :', response.status_code)
+        print(f'download{url}, :', response.status_code)
 
 for index, row in df.iterrows():
     if isinstance(row['plume_tif'], str) and len(row['plume_tif']) > 0:
