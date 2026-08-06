@@ -22,6 +22,20 @@ CANONICAL_FIELDS = [
     "cloud_cover",
     "selection_source",
     "status_message",
+    "target_time",
+    "time_delta_hours",
+    "qc_ok",
+    "qc_reason",
+    "qc_center_iy",
+    "qc_center_ix",
+    "qc_center_distance_km",
+    "qc_patch_missing_ratio",
+    "qc_patch_finite_count",
+    "qc_patch_total",
+    "qc_ch4_var",
+    "qc_candidate_rank",
+    "qc_candidates_checked",
+    "candidate_attempts",
     "source_log",
     "updated_at_utc",
 ]
@@ -40,6 +54,10 @@ SUCCESS_STATUSES = {
     "skip_local_tif_exists",
     "resume_skip_completed",
     "resume_skip_completed_deleted_drive",
+    "downloaded_crop_ok",
+    "skip_existing_crop_ok",
+    "master_completed_crop_ok",
+    "resume_skip_completed_crop_ok",
 }
 
 

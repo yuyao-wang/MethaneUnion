@@ -42,6 +42,8 @@ BACKOFF_STATUS_CODE = 429
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 120
 BACKOFF_MAX_RETRIES = 9
+DOWNLOAD_CONNECT_TIMEOUT_SECONDS = float(os.environ.get('CDSE_DOWNLOAD_CONNECT_TIMEOUT_SECONDS', '60'))
+DOWNLOAD_READ_TIMEOUT_SECONDS = float(os.environ.get('CDSE_DOWNLOAD_READ_TIMEOUT_SECONDS', '300'))
 base_dir = DEFAULT_LOCAL_BASE_DIR
 raw_data_dir = os.path.join('/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao', RAW_SUBDIR_NAME)
 # raw_data_dir = os.path.join('./', RAW_SUBDIR_NAME)
@@ -117,6 +119,10 @@ def build_proxy_dict(proxy_url: Optional[str]) -> Optional[Dict[str, str]]:
     if not proxy_url:
         return None
     return {"http": proxy_url, "https": proxy_url}
+
+
+def download_timeout() -> Tuple[float, float]:
+    return DOWNLOAD_CONNECT_TIMEOUT_SECONDS, DOWNLOAD_READ_TIMEOUT_SECONDS
 
 
 def compute_backoff_delay(attempt: int, headers: Optional[Dict[str, str]] = None) -> int:
@@ -302,7 +308,8 @@ def parse_a_file(file_path: str, plume_bounds: List[float]) -> Optional[np.ndarr
 
 
 def download(access_token: str, output_dir: str, plume_id: str, product_id: str, name: str,
-             plume_bounds: List[float], tif_output_path: str) -> Optional[Tuple[int, int]]:
+             plume_bounds: List[float], tif_output_path: str,
+             cleanup_product: bool = False) -> Optional[Tuple[int, int]]:
     output_path = os.path.join(output_dir, name)
     marker_file = os.path.join(output_path, DOWNLOAD_COMPLETION_MARKER)
     if os.path.exists(output_path) and not os.path.exists(marker_file):
@@ -313,15 +320,23 @@ def download(access_token: str, output_dir: str, plume_id: str, product_id: str,
         headers = {"Authorization": f"Bearer {access_token}"}
         session = requests.Session()
         session.headers.update(headers)
-        response = request_with_backoff(
-            lambda proxy: session.get(
-                url,
-                headers=headers,
-                stream=True,
-                proxies=build_proxy_dict(proxy),
-            ),
-            description=f'download {name}',
-        )
+        response = None
+        zip_output_path = os.path.join(output_dir, name + '.zip')
+        try:
+            response = request_with_backoff(
+                lambda proxy: session.get(
+                    url,
+                    headers=headers,
+                    stream=True,
+                    proxies=build_proxy_dict(proxy),
+                    timeout=download_timeout(),
+                ),
+                description=f'download {name}',
+            )
+        except Exception as exc:
+            print(f'download request failed for {name}: {exc}')
+            session.close()
+            return None
 
         folder_pattern = 'GRANULE/L2A_T'
         subfolder_pattern = '/IMG_DATA/R20m'
@@ -330,44 +345,56 @@ def download(access_token: str, output_dir: str, plume_id: str, product_id: str,
 
         try:
             if response.status_code == 200:
-                zip_output_path = os.path.join(output_dir, name + '.zip')
                 with open(zip_output_path, "wb") as file:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            file.write(chunk)
+                    try:
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if chunk:
+                                file.write(chunk)
+                    except requests.RequestException as exc:
+                        print(f'download stream failed for {name}: {exc}')
+                        if os.path.exists(zip_output_path):
+                            os.remove(zip_output_path)
+                        return None
 
                 os.makedirs(output_path, exist_ok=True)
-                with zipfile.ZipFile(zip_output_path, 'r') as zip_ref:
-                    all_files = zip_ref.namelist()
-                    directories_to_extract = [
-                        file for file in all_files
-                        if folder_pattern in file and (subfolder_pattern in file or QI_data_pattern in file)
-                    ]
-                    important_files = [file for file in all_files if important_file in file]
+                try:
+                    with zipfile.ZipFile(zip_output_path, 'r') as zip_ref:
+                        all_files = zip_ref.namelist()
+                        directories_to_extract = [
+                            file for file in all_files
+                            if folder_pattern in file and (subfolder_pattern in file or QI_data_pattern in file)
+                        ]
+                        important_files = [file for file in all_files if important_file in file]
 
-                    for file in directories_to_extract:
-                        if file.endswith('/'):
-                            continue
-                        filename = file[file.rfind('/') + 1:]
-                        if len(filename) == 0:
-                            continue
-                        target_path = os.path.join(output_dir, name, filename)
-                        with zip_ref.open(file) as f:
-                            content = f.read()
-                            with open(target_path, 'wb') as target_file:
-                                target_file.write(content)
+                        for file in directories_to_extract:
+                            if file.endswith('/'):
+                                continue
+                            filename = file[file.rfind('/') + 1:]
+                            if len(filename) == 0:
+                                continue
+                            target_path = os.path.join(output_dir, name, filename)
+                            with zip_ref.open(file) as f:
+                                content = f.read()
+                                with open(target_path, 'wb') as target_file:
+                                    target_file.write(content)
 
-                    for file in important_files:
-                        if file.endswith('/'):
-                            continue
-                        filename = file[file.rfind('/') + 1:]
-                        if len(filename) == 0:
-                            continue
-                        target_path = os.path.join(output_dir, name, filename)
-                        with zip_ref.open(file) as f:
-                            content = f.read()
-                            with open(target_path, 'wb') as target_file:
-                                target_file.write(content)
+                        for file in important_files:
+                            if file.endswith('/'):
+                                continue
+                            filename = file[file.rfind('/') + 1:]
+                            if len(filename) == 0:
+                                continue
+                            target_path = os.path.join(output_dir, name, filename)
+                            with zip_ref.open(file) as f:
+                                content = f.read()
+                                with open(target_path, 'wb') as target_file:
+                                    target_file.write(content)
+                except zipfile.BadZipFile as exc:
+                    print(f'invalid zip for {name}: {exc}')
+                    if os.path.exists(zip_output_path):
+                        os.remove(zip_output_path)
+                    shutil.rmtree(output_path, ignore_errors=True)
+                    return None
 
                 if os.path.exists(zip_output_path):
                     os.remove(zip_output_path)
@@ -377,7 +404,8 @@ def download(access_token: str, output_dir: str, plume_id: str, product_id: str,
                 print(f'request failed {response.status_code}')
                 return None
         finally:
-            response.close()
+            if response is not None:
+                response.close()
             session.close()
     else:
         print(f'output path {output_path} already exists with completion marker')
@@ -401,10 +429,14 @@ def download(access_token: str, output_dir: str, plume_id: str, product_id: str,
             img_output[spectrum_type - 1] = clipped
     if img_output is None:
         print(f'no valid JP2 data found for product {name}')
+        if cleanup_product:
+            shutil.rmtree(output_path, ignore_errors=True)
         return None
     os.makedirs(os.path.dirname(tif_output_path), exist_ok=True)
     print(f'final tif file output path {tif_output_path}')
     tifffile.imwrite(tif_output_path, img_output)
+    if cleanup_product:
+        shutil.rmtree(output_path, ignore_errors=True)
     return current_shape
 
 

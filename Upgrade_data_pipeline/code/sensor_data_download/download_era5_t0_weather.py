@@ -82,6 +82,14 @@ DEFAULT_LOGS = [
     "Upgrade_data_pipeline/csv/emit_download_manifest.csv",
     "Upgrade_data_pipeline/csv/s5p_download_manifest.csv",
 ]
+L89_COMPLETE_TIMEPOINTS = [
+    ("t0", "has_t0", "t0_512_path", "t0_image_time"),
+    ("prev1", "has_prev1", "prev1_512_path", "prev1_image_time"),
+    ("prev2", "has_prev2", "prev2_512_path", "prev2_image_time"),
+    ("prev3", "has_prev3", "prev3_512_path", "prev3_image_time"),
+    ("seasonal", "has_seasonal", "seasonal_512_path", "seasonal_image_time"),
+    ("year", "has_year", "year_512_path", "year_image_time"),
+]
 OUT_FIELDS = [
     "plume_id",
     "sensor",
@@ -318,6 +326,33 @@ def merge_image_log(plumes: dict[str, dict[str, Any]], log_path: Path) -> None:
                 record["evidence"].add(status)
             if status in SUCCESS_LOCAL:
                 record["local"] = True
+
+
+def merge_l89_complete_paths(plumes: dict[str, dict[str, Any]], path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        fh = path.open(newline="")
+    except OSError:
+        return
+    with fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            plume_id = str(row.get("plume_id", "")).strip()
+            if not plume_id:
+                continue
+            item = ensure_plume(plumes, row)
+            for timepoint, flag_col, path_col, time_col in L89_COMPLETE_TIMEPOINTS:
+                if not truthy(row.get(flag_col, "")):
+                    continue
+                if not has_value(row.get(path_col, "")) or not has_value(row.get(time_col, "")):
+                    continue
+                record = ensure_image_record(item, "L89", timepoint)
+                set_record_time(record, row.get(time_col, ""), f"l89_complete_paths.{time_col}", prefer=True)
+                record["planned"] = True
+                record["available"] = True
+                record["local"] = True
+                record["evidence"].add("l89_512_complete_paths")
 
 
 def record_selected(record: dict[str, Any], mode: str) -> bool:
@@ -667,6 +702,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--manifest", default="Upgrade_data_pipeline/csv/multisensor_6time_download_manifest.csv")
     parser.add_argument("--logs", default=",".join(DEFAULT_LOGS))
+    parser.add_argument(
+        "--l89-complete-csv",
+        default="Upgrade_data_pipeline/csv/l89_6time_complete_paths.csv",
+        help="Current L89 512 complete-path table. Use an empty string to disable this source.",
+    )
     parser.add_argument("--out-csv", default="Upgrade_data_pipeline/csv/era5_image_time_weather.csv")
     parser.add_argument("--cache-dir", default="/mnt/engg-niulab/yuyao/sensors_raw_data/ERA5/image_time_weather_cache")
     parser.add_argument("--image-source", "--t0-source", dest="image_source", choices=["available", "local", "manifest"], default="available")
@@ -691,6 +731,8 @@ def main() -> int:
     plumes = load_manifest_images(manifest, include_manifest_records=args.image_source == "manifest")
     for path in [Path(p.strip()) for p in args.logs.split(",") if p.strip()]:
         merge_image_log(plumes, path)
+    if str(args.l89_complete_csv).strip():
+        merge_l89_complete_paths(plumes, Path(args.l89_complete_csv))
     items = selected_image_items(plumes, args.image_source, args.time_rounding)
     if args.resume:
         done = load_done(Path(args.out_csv))

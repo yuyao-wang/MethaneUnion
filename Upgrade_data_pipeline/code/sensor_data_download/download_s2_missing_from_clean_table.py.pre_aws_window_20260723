@@ -1,0 +1,874 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import ast
+import csv
+import importlib.util
+import json
+import math
+import os
+import re
+import shutil
+import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import rasterio
+import tifffile
+from rasterio.windows import Window
+
+
+TIMEPOINTS = ["t0", "prev1", "prev2", "prev3", "seasonal", "year"]
+RAW_FILENAMES = {
+    "t0": "s2.tif",
+    "prev1": "s2_-7.tif",
+    "prev2": "s2_prev2.tif",
+    "prev3": "s2_prev3.tif",
+    "seasonal": "s2_-90.tif",
+    "year": "s2_-360.tif",
+}
+SUCCESS_SOURCE = "download_s2_missing_from_clean_table"
+DEFAULT_EXISTING_PRODUCT_ROOTS = ",".join(
+    [
+        "/mnt/engg-niulab/yuyao/sensors_raw_data/S2/raw_data_dir_s2",
+        "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_s2_90360",
+        "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/raw_data_dir_s2",
+        "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/data_download/raw_data_dir_s2",
+        "/mnt/engg-leung/Research_No9_Methane_Emissions/Yuyao/data_download/raw_data_dir_s2_-7",
+    ]
+)
+SPECTRAL_BAND_20M_RE = re.compile(r".*_B(?:0?[1-9]|1[0-2]|8A)_20m\.jp2$")
+
+
+def clean(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float) and math.isnan(value):
+        return ""
+    text = str(value).strip()
+    if text.lower() in {"nan", "none", "null", "<na>"}:
+        return ""
+    return text
+
+
+def has_value(value: Any) -> bool:
+    return bool(clean(value))
+
+
+def existing_path(value: Any) -> str:
+    text = clean(value)
+    if not text:
+        return ""
+    path = Path(text)
+    try:
+        if path.exists() and path.stat().st_size > 0:
+            return str(path)
+    except OSError:
+        return ""
+    return ""
+
+
+def georef_sidecar_path(tif_path: Path) -> Path:
+    return tif_path.with_name(tif_path.name + ".georef.json")
+
+
+def target_is_complete(target: Path, timepoint: str) -> bool:
+    try:
+        if not target.is_file() or target.stat().st_size <= 0:
+            return False
+        if timepoint == "t0":
+            sidecar = georef_sidecar_path(target)
+            return sidecar.is_file() and sidecar.stat().st_size > 0
+        return True
+    except OSError:
+        return False
+
+
+def utc_now_iso() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def safe_component(value: Any) -> str:
+    text = clean(value)
+    text = re.sub(r"[^A-Za-z0-9_.-]+", "_", text)
+    return text[:180] if text else "missing"
+
+
+def load_module(name: str, path: Path) -> Any:
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot import {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def parse_bounds(row: pd.Series) -> list[float]:
+    raw = clean(row.get("plume_bounds", ""))
+    if raw:
+        try:
+            parsed = ast.literal_eval(raw)
+            if isinstance(parsed, (list, tuple)) and len(parsed) == 4:
+                return [float(v) for v in parsed]
+        except Exception:
+            pass
+    lat = float(row["plume_latitude"])
+    lon = float(row["plume_longitude"])
+    return [lon - 0.01, lat - 0.01, lon + 0.01, lat + 0.01]
+
+
+def point_centered_crop_bounds(row: pd.Series) -> list[float]:
+    latitude = float(row["plume_latitude"])
+    longitude = float(row["plume_longitude"])
+    return [
+        longitude - 0.01,
+        latitude - 0.01,
+        longitude + 0.01,
+        latitude + 0.01,
+    ]
+
+
+def copy_file_atomic(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(dst.name + f".tmp.{os.getpid()}")
+    if tmp.exists():
+        tmp.unlink()
+    shutil.copy2(src, tmp)
+    os.replace(tmp, dst)
+
+
+def move_file_cross_fs(src: Path, dst: Path) -> None:
+    copy_file_atomic(src, dst)
+    src.unlink()
+
+
+def write_json_atomic(data: dict[str, Any], path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(
+        path.name + f".tmp.{os.getpid()}.{threading.get_ident()}"
+    )
+    temporary.write_text(json.dumps(data, sort_keys=True) + "\n")
+    os.replace(temporary, path)
+
+
+def cleanup_product(product_scratch_dir: Path, product_name: str) -> None:
+    for path in [product_scratch_dir / product_name, product_scratch_dir / f"{product_name}.zip"]:
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            elif path.exists():
+                path.unlink()
+        except Exception as exc:
+            print(f"warning: failed to clean scratch product {path}: {exc}", flush=True)
+
+
+def cleanup_crop_scratch(crop_scratch_dir: Path, product_id: str) -> None:
+    path = crop_scratch_dir / safe_component(product_id)
+    try:
+        if path.is_dir():
+            shutil.rmtree(path)
+    except Exception as exc:
+        print(f"warning: failed to clean crop scratch {path}: {exc}", flush=True)
+
+
+def parse_existing_product_roots(value: str) -> list[Path]:
+    return [Path(part.strip()) for part in value.split(",") if part.strip()]
+
+
+def product_band_files(product_dir: Path) -> list[Path]:
+    if not product_dir.is_dir():
+        return []
+    return sorted(
+        path
+        for path in product_dir.iterdir()
+        if path.is_file() and SPECTRAL_BAND_20M_RE.fullmatch(path.name)
+    )
+
+
+def find_existing_product(product_name: str, roots: list[Path]) -> Path | None:
+    for root in roots:
+        candidate = root / product_name
+        if product_band_files(candidate):
+            return candidate
+    return None
+
+
+def stage_existing_product(
+    source_dir: Path,
+    product_scratch_dir: Path,
+    product_name: str,
+) -> Path:
+    destination = product_scratch_dir / product_name
+    marker = destination / ".download_complete"
+    if marker.is_file() and product_band_files(destination):
+        return destination
+
+    if destination.exists():
+        shutil.rmtree(destination, ignore_errors=True)
+    temporary = product_scratch_dir / (
+        f".{safe_component(product_name)}.stage.{os.getpid()}.{threading.get_ident()}"
+    )
+    if temporary.exists():
+        shutil.rmtree(temporary, ignore_errors=True)
+    temporary.mkdir(parents=True)
+    try:
+        source_files = product_band_files(source_dir)
+        if not source_files:
+            raise RuntimeError(f"no spectral 20 m bands found in {source_dir}")
+        for source_file in source_files:
+            shutil.copy2(source_file, temporary / source_file.name)
+        (temporary / ".download_complete").write_text("staged\n")
+        os.replace(temporary, destination)
+    except Exception:
+        shutil.rmtree(temporary, ignore_errors=True)
+        raise
+    return destination
+
+
+def point_centered_window(
+    legacy: Any,
+    dataset: Any,
+    plume_bounds: list[float],
+) -> Window | None:
+    top_left = legacy.latlon_to_pixel(plume_bounds[3], plume_bounds[0], dataset)
+    bottom_right = legacy.latlon_to_pixel(plume_bounds[1], plume_bounds[2], dataset)
+    center_x = (top_left[0] + bottom_right[0]) / 2
+    center_y = (top_left[1] + bottom_right[1]) / 2
+
+    window_size = 512
+    half_window = window_size // 2
+    col_start = int(np.floor(center_x - half_window))
+    row_start = int(np.floor(center_y - half_window))
+    col_end = col_start + window_size
+    row_end = row_start + window_size
+    if col_start < 0:
+        col_end += -col_start
+        col_start = 0
+    if row_start < 0:
+        row_end += -row_start
+        row_start = 0
+    if col_end > dataset.width:
+        shift = col_end - dataset.width
+        col_start -= shift
+        col_end = dataset.width
+    if row_end > dataset.height:
+        shift = row_end - dataset.height
+        row_start -= shift
+        row_end = dataset.height
+    col_start = max(0, col_start)
+    row_start = max(0, row_start)
+    window_width = max(0, col_end - col_start)
+    window_height = max(0, row_end - row_start)
+    if window_width == 0 or window_height == 0:
+        return None
+    return Window(col_start, row_start, window_width, window_height)
+
+
+def crop_existing_product_group_to_window_cache(
+    legacy: Any,
+    args: argparse.Namespace,
+    group: list[dict[str, Any]],
+    source_dir: Path,
+    source_label: str | None = None,
+) -> list[dict[str, Any]]:
+    ready: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    for task in group:
+        target = Path(task["target_raw_path"])
+        if target_is_complete(target, task["timepoint"]) and not args.overwrite:
+            ready.append(
+                {
+                    **task,
+                    "status": "target_exists",
+                    "raw_path": str(target),
+                    "message": "",
+                }
+            )
+        else:
+            pending.append(task)
+    if not pending:
+        return ready
+
+    arrays: dict[tuple[int, str], np.ndarray] = {}
+    shapes: dict[tuple[int, str], tuple[int, int]] = {}
+    georefs: dict[tuple[int, str], dict[str, Any]] = {}
+    band_files = product_band_files(source_dir)
+    if not band_files:
+        raise RuntimeError(f"no spectral 20 m bands found in {source_dir}")
+
+    for band_file in band_files:
+        match = re.search(r".*B([0-9A-Za-z]+)_20m\.jp2$", band_file.name)
+        if match is None:
+            continue
+        spectrum_text = match.group(1)
+        spectrum_type = 8 if spectrum_text == "8A" else int(spectrum_text)
+        with rasterio.open(band_file) as dataset:
+            for task in pending:
+                key = (int(task["row_index"]), task["timepoint"])
+                window = point_centered_window(
+                    legacy,
+                    dataset,
+                    task["plume_bounds"],
+                )
+                if window is None:
+                    raise RuntimeError(
+                        f"empty point-centered crop for {task['plume_id']} from {band_file}"
+                    )
+                clipped = dataset.read(1, window=window)
+                if key not in arrays:
+                    shapes[key] = clipped.shape
+                    arrays[key] = np.zeros(
+                        (12, clipped.shape[0], clipped.shape[1]),
+                        dtype=clipped.dtype,
+                    )
+                    crop_transform = rasterio.windows.transform(
+                        window,
+                        dataset.transform,
+                    )
+                    georefs[key] = {
+                        "crs_wkt": dataset.crs.to_wkt() if dataset.crs else "",
+                        "transform": list(crop_transform),
+                        "height": int(clipped.shape[0]),
+                        "width": int(clipped.shape[1]),
+                        "plume_id": task["plume_id"],
+                        "timepoint": task["timepoint"],
+                        "product_id": task["product_id"],
+                        "product_name": task["product_name"],
+                        "reference_band": band_file.name,
+                    }
+                if clipped.shape != shapes[key]:
+                    raise RuntimeError(
+                        f"band shape mismatch for {task['plume_id']}: "
+                        f"{clipped.shape} != {shapes[key]}"
+                    )
+                arrays[key][spectrum_type - 1] = clipped
+
+    if source_label is None:
+        source_label = f"window_cache:{source_dir.parent}"
+    for task in pending:
+        key = (int(task["row_index"]), task["timepoint"])
+        image = arrays.get(key)
+        if image is None:
+            raise RuntimeError(f"no bands cropped for {task['plume_id']}")
+        if image.shape != (12, 512, 512):
+            raise RuntimeError(
+                f"unexpected crop shape for {task['plume_id']}: {image.shape}"
+            )
+        product_key = safe_component(task["product_id"])
+        scratch_tif = (
+            Path(args.crop_scratch_dir)
+            / product_key
+            / task["plume_id"]
+            / f"{task['timepoint']}.tif"
+        )
+        scratch_tif.parent.mkdir(parents=True, exist_ok=True)
+        tifffile.imwrite(scratch_tif, image)
+        target = Path(task["target_raw_path"])
+        move_file_cross_fs(scratch_tif, target)
+        if task["timepoint"] == "t0":
+            write_json_atomic(georefs[key], georef_sidecar_path(target))
+        ready.append(
+            {
+                **task,
+                "status": "downloaded",
+                "raw_path": str(target),
+                "message": f"512x512; product_source={source_label}",
+            }
+        )
+    return ready
+
+
+def load_legacy_s2(repo_root: Path) -> Any:
+    return load_module("legacy_s2_clean_table_download", repo_root / "data_preprocess" / "carbon_mapper_sentinel2_90360_plume_download.py")
+
+
+def load_config(legacy: Any, path: str) -> dict[str, Any]:
+    if path and Path(path).exists():
+        return legacy.load_config(path)
+    return {}
+
+
+def load_cdse_credentials(args: argparse.Namespace, config: dict[str, Any]) -> list[dict[str, str]]:
+    if args.cdse_username or args.cdse_password:
+        if not args.cdse_username or not args.cdse_password:
+            raise RuntimeError("provide both --cdse-username and --cdse-password")
+        return [{"username": args.cdse_username, "password": args.cdse_password}]
+    out: list[dict[str, str]] = []
+    idx = args.cdse_env_index
+    while True:
+        username = os.environ.get(f"CDSE_USERNAME{idx}") or config.get(f"cdse_username{idx}")
+        password = os.environ.get(f"CDSE_PASSWORD{idx}") or config.get(f"cdse_password{idx}")
+        if username and password:
+            out.append({"username": username, "password": password})
+            idx += 1
+            continue
+        if username or password:
+            raise RuntimeError(f"incomplete CDSE credential pair at index {idx}")
+        break
+    if not out:
+        legacy_user = config.get("cdse_username")
+        legacy_pass = config.get("cdse_password")
+        if legacy_user and legacy_pass:
+            out.append({"username": legacy_user, "password": legacy_pass})
+    if not out:
+        raise RuntimeError(f"CDSE credentials not found. Set CDSE_USERNAME{args.cdse_env_index}/CDSE_PASSWORD{args.cdse_env_index}.")
+    return out
+
+
+def start_tokens(legacy: Any, credentials: list[dict[str, str]]) -> list[Any]:
+    tokens = []
+    for cred in credentials:
+        token = legacy.RefreshableAccessToken(cred["username"], cred["password"])
+        tokens.append(token)
+        thread = threading.Thread(target=legacy.refresh_variable, args=(token,), daemon=True)
+        thread.start()
+    return tokens
+
+
+def sync_existing_targets(df: pd.DataFrame, timepoints: list[str]) -> int:
+    changed = 0
+    for idx, row in df.iterrows():
+        for tp in timepoints:
+            target_col = f"{tp}_download_target_raw_path"
+            raw_col = f"{tp}_raw_path"
+            target = existing_path(row.get(target_col, ""))
+            if not target:
+                continue
+            if not existing_path(row.get(raw_col, "")):
+                df.at[idx, raw_col] = target
+                df.at[idx, f"{tp}_path_source"] = SUCCESS_SOURCE + ":target_exists_on_resume"
+                df.at[idx, f"{tp}_local_status"] = "available"
+                df.at[idx, f"{tp}_download_needed"] = 0
+                df.at[idx, target_col] = ""
+                changed += 1
+    return changed
+
+
+def save_table_atomic(df: pd.DataFrame, path: Path) -> None:
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    df.to_csv(tmp, index=False, quoting=csv.QUOTE_MINIMAL)
+    os.replace(tmp, path)
+
+
+def build_tasks(
+    df: pd.DataFrame,
+    timepoints: list[str],
+    overwrite: bool,
+    limit: int,
+    target_root: str,
+) -> list[dict[str, Any]]:
+    tasks: list[dict[str, Any]] = []
+    for idx, row in df.iterrows():
+        for tp in timepoints:
+            if target_root:
+                target = str(
+                    Path(target_root)
+                    / tp
+                    / clean(row["plume_id"])
+                    / RAW_FILENAMES[tp]
+                )
+            else:
+                target = clean(row.get(f"{tp}_download_target_raw_path", ""))
+                if not target and overwrite:
+                    target = clean(row.get(f"{tp}_raw_path", ""))
+            if not target:
+                continue
+            if (
+                not target_root
+                and int(float(row.get(f"{tp}_download_needed", 0) or 0)) != 1
+                and not overwrite
+            ):
+                continue
+            if not target_root and existing_path(row.get(f"{tp}_raw_path", "")) and not overwrite:
+                continue
+            if target_is_complete(Path(target), tp) and not overwrite:
+                continue
+            product_id = clean(row.get(f"{tp}_product_id", ""))
+            product_name = clean(row.get(f"{tp}_product_name", ""))
+            if not product_id or not product_name:
+                continue
+            tasks.append(
+                {
+                    "row_index": idx,
+                    "plume_id": clean(row["plume_id"]),
+                    "timepoint": tp,
+                    "product_id": product_id,
+                    "product_name": product_name,
+                    "target_raw_path": target,
+                    "plume_bounds": point_centered_crop_bounds(row),
+                }
+            )
+            if limit and len(tasks) >= limit:
+                return tasks
+    return tasks
+
+
+def group_tasks_by_product(tasks: list[dict[str, Any]]) -> list[list[dict[str, Any]]]:
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for task in tasks:
+        groups.setdefault((task["product_id"], task["product_name"]), []).append(task)
+    return list(groups.values())
+
+
+def download_one_crop(
+    legacy: Any,
+    token: Any,
+    args: argparse.Namespace,
+    task: dict[str, Any],
+) -> dict[str, Any]:
+    target = Path(task["target_raw_path"])
+    if target_is_complete(target, task["timepoint"]) and not args.overwrite:
+        return {**task, "status": "target_exists", "raw_path": str(target), "message": ""}
+
+    product_key = safe_component(task["product_id"])
+    scratch_tif = Path(args.crop_scratch_dir) / product_key / task["plume_id"] / f"{task['timepoint']}.tif"
+    scratch_tif.parent.mkdir(parents=True, exist_ok=True)
+    if scratch_tif.exists():
+        scratch_tif.unlink()
+
+    for attempt in range(1, args.auth_retries + 2):
+        dims = legacy.download(
+            token.get(),
+            args.product_scratch_dir,
+            task["plume_id"],
+            task["product_id"],
+            task["product_name"],
+            task["plume_bounds"],
+            str(scratch_tif),
+            cleanup_product=False,
+        )
+        if dims is not None and scratch_tif.exists() and scratch_tif.stat().st_size > 0:
+            move_file_cross_fs(scratch_tif, target)
+            product_source = clean(task.get("product_cache_source", "cdse"))
+            return {
+                **task,
+                "status": "downloaded",
+                "raw_path": str(target),
+                "message": (
+                    f"{int(dims[0])}x{int(dims[1])}; attempts={attempt}; "
+                    f"product_source={product_source}"
+                ),
+            }
+        if attempt <= args.auth_retries:
+            try:
+                token.update()
+            except Exception as exc:
+                return {**task, "status": "failed", "raw_path": "", "message": f"token refresh failed: {exc}"}
+            time.sleep(args.auth_retry_sleep)
+    return {**task, "status": "failed", "raw_path": "", "message": "legacy download returned no crop"}
+
+
+def process_product_group(
+    legacy: Any,
+    token: Any,
+    args: argparse.Namespace,
+    group: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not group:
+        return []
+    product_name = group[0]["product_name"]
+    product_id = group[0]["product_id"]
+    results: list[dict[str, Any]] = []
+    lock = legacy.get_product_lock(product_name)
+    with lock:
+        try:
+            existing_source = args.existing_product_source_map.get(product_name)
+            use_window_cache = (
+                existing_source is not None
+                and (
+                    args.existing_cache_mode == "window"
+                    or (
+                        args.existing_cache_mode == "adaptive"
+                        and len(group) < args.full_stage_min_tasks
+                    )
+                )
+            )
+            if use_window_cache:
+                return crop_existing_product_group_to_window_cache(
+                    legacy,
+                    args,
+                    group,
+                    existing_source,
+                )
+            if existing_source is not None:
+                local_product = stage_existing_product(
+                    existing_source,
+                    Path(args.product_scratch_dir),
+                    product_name,
+                )
+                return crop_existing_product_group_to_window_cache(
+                    legacy,
+                    args,
+                    group,
+                    local_product,
+                    source_label=f"full_cache:{existing_source.parent}",
+                )
+            first_result = download_one_crop(
+                legacy,
+                token,
+                args,
+                {**group[0], "product_cache_source": "cdse"},
+            )
+            if first_result.get("status") not in {"downloaded", "target_exists"}:
+                results.append(first_result)
+                message = clean(first_result.get("message")) or "CDSE product download failed"
+                results.extend(
+                    {
+                        **task,
+                        "status": "failed",
+                        "raw_path": "",
+                        "message": message,
+                    }
+                    for task in group[1:]
+                )
+            elif group[0]["timepoint"] == "t0":
+                local_product = Path(args.product_scratch_dir) / product_name
+                results.extend(
+                    crop_existing_product_group_to_window_cache(
+                        legacy,
+                        args,
+                        group,
+                        local_product,
+                        source_label="cdse_local_cache",
+                    )
+                )
+            else:
+                results.append(first_result)
+                if len(group) > 1:
+                    local_product = Path(args.product_scratch_dir) / product_name
+                    results.extend(
+                        crop_existing_product_group_to_window_cache(
+                            legacy,
+                            args,
+                            group[1:],
+                            local_product,
+                            source_label="cdse_local_cache",
+                        )
+                    )
+        except Exception as exc:
+            message = f"product group failed: {type(exc).__name__}: {exc}"
+            print(f"{product_name}: {message}", flush=True)
+            results.extend(
+                {
+                    **task,
+                    "status": "failed",
+                    "raw_path": "",
+                    "message": message,
+                }
+                for task in group[len(results):]
+            )
+        finally:
+            if args.cleanup_product:
+                cleanup_product(Path(args.product_scratch_dir), product_name)
+                cleanup_crop_scratch(Path(args.crop_scratch_dir), product_id)
+    return results
+
+
+def apply_results_to_table(df: pd.DataFrame, results: list[dict[str, Any]]) -> int:
+    changed = 0
+    for record in results:
+        idx = int(record["row_index"])
+        tp = record["timepoint"]
+        status = clean(record.get("status"))
+        df.at[idx, f"{tp}_recrop_status"] = status
+        df.at[idx, f"{tp}_recrop_message"] = clean(record.get("message"))
+        if status not in {"downloaded", "target_exists"}:
+            continue
+        raw_path = existing_path(record.get("raw_path", ""))
+        if not raw_path:
+            continue
+        df.at[idx, f"{tp}_raw_path"] = raw_path
+        df.at[idx, f"{tp}_path_source"] = SUCCESS_SOURCE
+        df.at[idx, f"{tp}_local_status"] = "available"
+        df.at[idx, f"{tp}_download_needed"] = 0
+        df.at[idx, f"{tp}_download_target_raw_path"] = ""
+        df.at[idx, f"{tp}_matched_old_timepoint"] = "product_crops"
+        changed += 1
+    return changed
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Point-center recrop S2 timepoints from grouped CDSE SAFE products."
+    )
+    parser.add_argument("--table", default="Upgrade_data_pipeline/csv/s2_6time_clean_paths.csv")
+    parser.add_argument("--output-table", default="")
+    parser.add_argument("--target-root", default="")
+    parser.add_argument("--timepoints", default="t0,prev1,prev2,prev3,seasonal,year")
+    parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--limit", type=int, default=0)
+    parser.add_argument("--legacy-config", default="")
+    parser.add_argument("--product-scratch-dir", default="/diniuvol/yuyao/s2_download_scratch/products")
+    parser.add_argument("--crop-scratch-dir", default="/diniuvol/yuyao/s2_download_scratch/crops")
+    parser.add_argument(
+        "--existing-product-roots",
+        default=DEFAULT_EXISTING_PRODUCT_ROOTS,
+        help="Comma-separated extracted SAFE roots, searched before CDSE download.",
+    )
+    parser.add_argument(
+        "--existing-cache-mode",
+        choices=("adaptive", "window", "full"),
+        default="adaptive",
+        help="Cache remote SAFE data as needed windows, full products, or adapt by reuse.",
+    )
+    parser.add_argument(
+        "--full-stage-min-tasks",
+        type=int,
+        default=32,
+        help="In adaptive mode, fully stage products reused by at least this many crops.",
+    )
+    parser.add_argument("--cdse-env-index", type=int, default=1)
+    parser.add_argument("--cdse-username", default="")
+    parser.add_argument("--cdse-password", default="")
+    parser.add_argument("--auth-retries", type=int, default=3)
+    parser.add_argument("--auth-retry-sleep", type=float, default=2.0)
+    parser.add_argument("--sync-interval", type=int, default=25)
+    parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument("--no-cleanup-product", dest="cleanup_product", action="store_false")
+    parser.set_defaults(cleanup_product=True)
+    parser.add_argument("--dry-run", action="store_true")
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+    args.existing_product_root_list = parse_existing_product_roots(
+        args.existing_product_roots
+    )
+    timepoints = [tp.strip() for tp in args.timepoints.split(",") if tp.strip()]
+    bad = sorted(set(timepoints) - set(TIMEPOINTS))
+    if bad:
+        raise ValueError(f"unsupported timepoints: {bad}")
+    Path(args.product_scratch_dir).mkdir(parents=True, exist_ok=True)
+    Path(args.crop_scratch_dir).mkdir(parents=True, exist_ok=True)
+
+    table_path = Path(args.table)
+    output_table_path = Path(args.output_table) if args.output_table else table_path
+    output_table_path.parent.mkdir(parents=True, exist_ok=True)
+    load_path = output_table_path if output_table_path.exists() else table_path
+    df = pd.read_csv(load_path, low_memory=False)
+    for tp in timepoints:
+        mutable_text_columns = [
+            f"{tp}_raw_path",
+            f"{tp}_path_source",
+            f"{tp}_local_status",
+            f"{tp}_download_target_raw_path",
+            f"{tp}_matched_old_timepoint",
+        ]
+        for column in mutable_text_columns:
+            if column not in df.columns:
+                df[column] = ""
+            df[column] = df[column].astype(object)
+        original_column = f"{tp}_original_raw_path"
+        if original_column not in df.columns:
+            df[original_column] = df.get(f"{tp}_raw_path", "")
+        for suffix in ("recrop_status", "recrop_message"):
+            column = f"{tp}_{suffix}"
+            if column not in df.columns:
+                df[column] = ""
+    if not args.target_root:
+        changed = sync_existing_targets(df, timepoints)
+        if changed:
+            save_table_atomic(df, output_table_path)
+            print(f"synced existing target files into table: {changed}", flush=True)
+
+    tasks = build_tasks(df, timepoints, args.overwrite, args.limit, args.target_root)
+    groups = group_tasks_by_product(tasks)
+    product_root = Path(args.product_scratch_dir)
+    product_sources = {
+        group[0]["product_name"]: find_existing_product(
+            group[0]["product_name"],
+            args.existing_product_root_list,
+        )
+        for group in groups
+    }
+    args.existing_product_source_map = product_sources
+    groups.sort(
+        key=lambda group: (
+            not (product_root / group[0]["product_name"]).is_dir(),
+            product_sources[group[0]["product_name"]] is None,
+        )
+    )
+    cached_groups = sum(
+        source is not None for source in product_sources.values()
+    )
+    window_groups = sum(
+        source is not None
+        and (
+            args.existing_cache_mode == "window"
+            or (
+                args.existing_cache_mode == "adaptive"
+                and len(group) < args.full_stage_min_tasks
+            )
+        )
+        for group, source in (
+            (group, product_sources[group[0]["product_name"]])
+            for group in groups
+        )
+    )
+    print(
+        f"tasks={len(tasks)} product_groups={len(groups)} cached_groups={cached_groups} "
+        f"window_groups={window_groups} full_cache_groups={cached_groups - window_groups} "
+        f"cdse_groups={len(groups) - cached_groups} timepoints={','.join(timepoints)}",
+        flush=True,
+    )
+    if args.dry_run:
+        for tp in timepoints:
+            subset = [t for t in tasks if t["timepoint"] == tp]
+            print(f"{tp}: tasks={len(subset)} unique_products={len({t['product_id'] for t in subset})}", flush=True)
+        return 0
+    if not tasks:
+        return 0
+
+    repo_root = Path.cwd()
+    legacy = load_legacy_s2(repo_root)
+    config = load_config(legacy, args.legacy_config)
+    with legacy.proxy_manager_lock:
+        legacy.proxy_manager = legacy.build_proxy_manager(config)
+    credentials = load_cdse_credentials(args, config)
+    tokens = start_tokens(legacy, credentials)
+
+    completed_groups = 0
+    completed_tasks = 0
+    pending_records: list[dict[str, Any]] = []
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        futures = []
+        for idx, group in enumerate(groups):
+            token = tokens[idx % len(tokens)]
+            futures.append(executor.submit(process_product_group, legacy, token, args, group))
+        try:
+            for future in as_completed(futures):
+                records = future.result()
+                completed_groups += 1
+                completed_tasks += len(records)
+                pending_records.extend(records)
+                ok = sum(1 for r in records if r.get("status") in {"downloaded", "target_exists"})
+                failed = len(records) - ok
+                print(
+                    f"group {completed_groups}/{len(groups)} tasks={len(records)} ok={ok} failed={failed} "
+                    f"done_tasks={completed_tasks}/{len(tasks)}",
+                    flush=True,
+                )
+                if len(pending_records) >= args.sync_interval:
+                    applied = apply_results_to_table(df, pending_records)
+                    save_table_atomic(df, output_table_path)
+                    print(f"synced table records={len(pending_records)} applied={applied}", flush=True)
+                    pending_records.clear()
+        finally:
+            if pending_records:
+                applied = apply_results_to_table(df, pending_records)
+                save_table_atomic(df, output_table_path)
+                print(f"synced table records={len(pending_records)} applied={applied}", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

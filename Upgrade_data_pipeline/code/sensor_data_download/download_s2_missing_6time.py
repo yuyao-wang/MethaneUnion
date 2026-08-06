@@ -8,6 +8,7 @@ import importlib.util
 import math
 import os
 import re
+import shutil
 import sys
 import threading
 import time
@@ -26,6 +27,7 @@ from manifest_state import (
 
 TIMEPOINTS = ["t0", "prev1", "prev2", "prev3", "seasonal", "year"]
 PREV_INDEX = {"prev1": 1, "prev2": 2, "prev3": 3}
+DEFAULT_SCRATCH_PRODUCT_DIR = "/diniuvol/yuyao/s2_download_scratch"
 RAW_TIF_NAME = {
     "t0": "s2.tif",
     "prev1": "s2_-7.tif",
@@ -123,7 +125,7 @@ def group_rows_by_plume(rows: list[dict[str, Any]]) -> list[list[dict[str, Any]]
     return list(groups.values())
 
 
-def completion_ok(row: dict[str, str]) -> bool:
+def completion_ok(row: dict[str, str], check_files: bool = True) -> bool:
     status = str(row.get("status", "")).strip()
     if status not in SUCCESS_STATUSES:
         return False
@@ -134,6 +136,12 @@ def completion_ok(row: dict[str, str]) -> bool:
             and has_value(row.get("acquisition_time"))
         ):
             return False
+    if not check_files:
+        return (
+            has_value(row.get("raw_path"))
+            or has_value(row.get("target_512_path"))
+            or has_value(row.get("existing_512_path"))
+        )
     if existing_file(row.get("raw_path")) is not None:
         return True
     if existing_file(row.get("target_512_path")) is not None:
@@ -143,7 +151,7 @@ def completion_ok(row: dict[str, str]) -> bool:
     return False
 
 
-def load_completed_records(path: str) -> dict[tuple[str, str], dict[str, str]]:
+def load_completed_records(path: str, check_files: bool = True) -> dict[tuple[str, str], dict[str, str]]:
     out = Path(path)
     if not out.exists():
         return {}
@@ -151,7 +159,7 @@ def load_completed_records(path: str) -> dict[tuple[str, str], dict[str, str]]:
     with out.open(newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
-            if not completion_ok(row):
+            if not completion_ok(row, check_files=check_files):
                 continue
             plume_id = str(row.get("plume_id", "")).strip()
             tp = str(row.get("timepoint", "")).strip()
@@ -256,6 +264,17 @@ def parse_bounds(row: dict[str, Any]) -> tuple[list[float], str]:
         f"{max_lon} {max_lat},{max_lon} {min_lat},{min_lon} {min_lat})"
     )
     return bounds, poly
+
+
+def point_centered_crop_bounds(row: dict[str, Any]) -> list[float]:
+    latitude = float(row["plume_latitude"])
+    longitude = float(row["plume_longitude"])
+    return [
+        longitude - 0.01,
+        latitude - 0.01,
+        longitude + 0.01,
+        latitude + 0.01,
+    ]
 
 
 def target_raw_path(row: dict[str, Any], raw_root: str) -> Path:
@@ -423,6 +442,42 @@ def base_record(row: dict[str, Any], raw_path: Path) -> dict[str, Any]:
     }
 
 
+def resume_record_from_completed(
+    row: dict[str, Any],
+    raw_path: Path,
+    completed_record: Optional[dict[str, str]],
+) -> dict[str, Any]:
+    record = base_record(row, raw_path)
+    if completed_record:
+        for field in [
+            "raw_path",
+            "target_512_path",
+            "existing_512_path",
+            "product_name",
+            "product_id",
+            "acquisition_time",
+            "query_start_utc",
+            "query_end_utc",
+            "selection_source",
+            "message",
+        ]:
+            value = completed_record.get(field, "")
+            if has_value(value):
+                record[field] = value
+    record["status"] = "resume_skip_completed"
+    return record
+
+
+def completed_record_has_file(record: Optional[dict[str, str]]) -> bool:
+    if not record:
+        return False
+    return (
+        existing_file(record.get("raw_path")) is not None
+        or existing_file(record.get("target_512_path")) is not None
+        or existing_file(record.get("existing_512_path")) is not None
+    )
+
+
 def record_is_success(record: dict[str, Any]) -> bool:
     return str(record.get("status", "")).strip() in SUCCESS_STATUSES
 
@@ -455,6 +510,7 @@ def download_with_token_refresh(
             product_name,
             bounds,
             str(raw_path),
+            cleanup_product=(args.scratch_cleanup == "immediate"),
         )
         if dims is not None:
             return dims, attempt, ""
@@ -479,6 +535,7 @@ def process_row(
     legacy: Any,
     token: Any,
     completed: set[tuple[str, str]],
+    completed_records: dict[tuple[str, str], dict[str, str]],
     t0_product: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     plume_id = str(row.get("plume_id", "")).strip()
@@ -487,8 +544,9 @@ def process_row(
     record = base_record(row, raw_path)
 
     if args.resume and (plume_id, tp) in completed and not args.overwrite:
-        record["status"] = "resume_skip_completed"
-        return record
+        completed_record = completed_records.get((plume_id, tp))
+        if completed_record_has_file(completed_record):
+            return resume_record_from_completed(row, raw_path, completed_record)
 
     selected: Optional[dict[str, Any]] = None
     query_start = ""
@@ -529,7 +587,7 @@ def process_row(
     record["product_id"] = product_id
     record["acquisition_time"] = iso_z(acquisition_time)
 
-    bounds, _ = parse_bounds(row)
+    bounds = point_centered_crop_bounds(row)
     product_lock = legacy.get_product_lock(product_name)
     with product_lock:
         dims, attempts, retry_message = download_with_token_refresh(
@@ -571,11 +629,12 @@ def process_plume_group(
     other_rows = [row for row in group_rows if str(row.get("timepoint", "")).strip() != "t0"]
     records: list[dict[str, Any]] = []
 
-    t0_ok = (plume_id, "t0") in completed
-    t0_product = product_from_completed(completed_records.get((plume_id, "t0")))
+    t0_completed_record = completed_records.get((plume_id, "t0"))
+    t0_ok = completed_record_has_file(t0_completed_record)
+    t0_product = product_from_completed(t0_completed_record) if t0_ok else None
     t0_message = "t0 is not completed in the current output manifest"
     for row in t0_rows:
-        rec = process_row(row, args, legacy, token, completed)
+        rec = process_row(row, args, legacy, token, completed, completed_records)
         records.append(rec)
         if record_is_success(rec):
             t0_ok = True
@@ -589,7 +648,7 @@ def process_plume_group(
 
     if t0_ok:
         for row in other_rows:
-            records.append(process_row(row, args, legacy, token, completed, t0_product))
+            records.append(process_row(row, args, legacy, token, completed, completed_records, t0_product))
     else:
         for row in other_rows:
             records.append(skip_t0_failed_record(row, args.raw_root, t0_message))
@@ -604,6 +663,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out-csv", default="Upgrade_data_pipeline/csv/s2_download_manifest.csv")
     parser.add_argument("--raw-root", default="/mnt/engg-niulab/yuyao/sensors_raw_data")
     parser.add_argument("--raw-product-dir", default="")
+    parser.add_argument(
+        "--scratch-product-dir",
+        default=DEFAULT_SCRATCH_PRODUCT_DIR,
+        help="Local scratch directory for temporary Sentinel-2 SAFE zip/extracted product cache.",
+    )
+    parser.add_argument(
+        "--scratch-cleanup",
+        choices=["end", "immediate", "none"],
+        default="end",
+        help=(
+            "Clean local scratch products. 'end' keeps extracted SAFE products during this run "
+            "for reuse and removes them on normal exit; 'immediate' removes each SAFE after one "
+            "crop; 'none' leaves scratch products for a later resume."
+        ),
+    )
     parser.add_argument("--legacy-config", default="")
     parser.add_argument("--timepoints", default="t0,prev1,prev2,prev3,seasonal,year")
     parser.add_argument("--workers", type=int, default=4)
@@ -619,7 +693,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--no-master-update", action="store_true")
+    parser.add_argument(
+        "--master-update-interval",
+        type=int,
+        default=1000,
+        help="Sync completed output records back to the master manifest every N log rows. "
+        "Use 0 to sync only once at the end.",
+    )
     return parser.parse_args()
+
+
+def cleanup_scratch_products(raw_product_dir: str) -> int:
+    product_dir = Path(raw_product_dir)
+    if not product_dir.exists():
+        return 0
+    removed = 0
+    for path in list(product_dir.glob("*.SAFE.zip")) + list(product_dir.glob("*.SAFE")):
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink()
+            removed += 1
+        except FileNotFoundError:
+            continue
+        except Exception as exc:
+            log(f"failed to clean scratch product {path}: {exc}")
+    return removed
 
 
 def record_to_master_update(record: dict[str, Any]) -> dict[str, Any]:
@@ -648,6 +748,20 @@ def record_to_master_update(record: dict[str, Any]) -> dict[str, Any]:
     return update
 
 
+def sync_master_updates(args: argparse.Namespace, records: list[dict[str, Any]], context: str) -> int:
+    if args.no_master_update or not records:
+        return 0
+    changed = update_master_from_records(
+        args.manifest,
+        "S2",
+        records,
+        record_to_master_update,
+        source_log=args.out_csv,
+    )
+    log(f"updated master manifest rows ({context}): {changed}")
+    return changed
+
+
 def main() -> int:
     args = parse_args()
     requested_timepoints = {tp.strip() for tp in args.timepoints.split(",") if tp.strip()}
@@ -658,18 +772,26 @@ def main() -> int:
         raise ValueError("--workers must be >= 1")
 
     if not args.raw_product_dir:
-        args.raw_product_dir = str(Path(args.raw_root) / "S2" / "raw_data_dir_s2")
+        args.raw_product_dir = args.scratch_product_dir
     Path(args.raw_product_dir).mkdir(parents=True, exist_ok=True)
+    log(f"S2 product scratch/cache dir: {args.raw_product_dir}")
 
     ensure_manifest_columns(args.manifest)
     rows = read_manifest(args.manifest, requested_timepoints, args.limit)
-    completed_records = {
+    out_csv = Path(args.out_csv)
+    master_completed_records = {
         key: master_record_to_s2(row)
         for key, row in load_master_completed_records(args.manifest, "S2").items()
     }
+    completed_records = dict(master_completed_records)
+    if args.resume:
+        out_completed_records = load_completed_records(args.out_csv, check_files=False)
+        completed_records.update(out_completed_records)
+        log(f"loaded completed S2 rows from output manifest: {len(out_completed_records)}")
     completed = set(completed_records.keys())
     log(f"loaded S2 download rows: {len(rows)}")
-    log(f"loaded completed S2 rows from master manifest: {len(completed)}")
+    log(f"loaded completed S2 rows from master manifest: {len(master_completed_records)}")
+    log(f"loaded completed S2 rows total for resume: {len(completed)}")
 
     repo_root = repo_root_from_script()
     legacy = load_legacy_s2_module(repo_root)
@@ -679,45 +801,44 @@ def main() -> int:
     credentials = load_cdse_credentials(args, config)
     token_pool = start_token_pool(legacy, credentials)
 
-    out_csv = Path(args.out_csv)
     groups = group_rows_by_plume(rows)
     log(f"loaded S2 plume groups: {len(groups)}")
     completed_rows = 0
-    all_records: list[dict[str, Any]] = []
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        futures = []
-        for idx, group in enumerate(groups):
-            token = token_pool[idx % len(token_pool)]
-            futures.append(executor.submit(process_plume_group, group, args, legacy, token, completed, completed_records))
-        for future in as_completed(futures):
-            try:
-                records = future.result()
-            except KeyboardInterrupt:
-                raise
-            except Exception as exc:
-                record = {field: "" for field in OUT_FIELDS}
-                record["status"] = "error"
-                record["message"] = str(exc)
-                records = [record]
-            for record in records:
-                all_records.append(record)
-                completed_rows += 1
-                append_row(out_csv, record)
-                log(
-                    f"[{completed_rows}/{len(rows)}] {record.get('status', '')} "
-                    f"{record.get('plume_id', '')} {record.get('timepoint', '')} "
-                    f"{record.get('product_name', '')}"
-                )
-                time.sleep(0.05)
-    if not args.no_master_update:
-        changed = update_master_from_records(
-            args.manifest,
-            "S2",
-            all_records,
-            record_to_master_update,
-            source_log=args.out_csv,
-        )
-        log(f"updated master manifest rows: {changed}")
+    pending_master_records: list[dict[str, Any]] = []
+    try:
+        with ThreadPoolExecutor(max_workers=args.workers) as executor:
+            futures = []
+            for idx, group in enumerate(groups):
+                token = token_pool[idx % len(token_pool)]
+                futures.append(executor.submit(process_plume_group, group, args, legacy, token, completed, completed_records))
+            for future in as_completed(futures):
+                try:
+                    records = future.result()
+                except KeyboardInterrupt:
+                    raise
+                except Exception as exc:
+                    record = {field: "" for field in OUT_FIELDS}
+                    record["status"] = "error"
+                    record["message"] = str(exc)
+                    records = [record]
+                for record in records:
+                    pending_master_records.append(record)
+                    completed_rows += 1
+                    append_row(out_csv, record)
+                    log(
+                        f"[{completed_rows}/{len(rows)}] {record.get('status', '')} "
+                        f"{record.get('plume_id', '')} {record.get('timepoint', '')} "
+                        f"{record.get('product_name', '')}"
+                    )
+                    if args.master_update_interval > 0 and len(pending_master_records) >= args.master_update_interval:
+                        sync_master_updates(args, pending_master_records, f"periodic after {completed_rows} rows")
+                        pending_master_records.clear()
+                    time.sleep(0.05)
+    finally:
+        sync_master_updates(args, pending_master_records, "final")
+        if args.scratch_cleanup == "end":
+            removed = cleanup_scratch_products(args.raw_product_dir)
+            log(f"cleaned S2 scratch products on exit: {removed}")
     return 0
 
 
