@@ -35,3 +35,25 @@ __pycache__/
 .idea/
 settings.json
 *.code-workspace
+
+# Local credentials. Use data_downloading/credentials.example.json as a template.
+/data_downloading/token.json
+/data_downloading/token*.json
+/data_downloading/credentials.json
+/data_downloading/config/client_secret*.json
+.env
+.env.*
+!.env.example
+
+# Active pipeline outputs and resumable state on A100.
+/Upgrade_data_pipeline/csv/
+/Upgrade_data_pipeline/logs/
+/Upgrade_data_pipeline/temp/
+/artifacts/
+*.log
+*.pid
+*.tmp
+*.tmp.*
+*.before_*
+*.pre_reconcile_*
+*.bad_reconcile_*
