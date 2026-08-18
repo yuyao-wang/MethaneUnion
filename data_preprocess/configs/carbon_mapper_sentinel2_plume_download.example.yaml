@@ -1,0 +1,11 @@
+raw_data_dir: /path/to/raw_data
+local_base_dir: /path/to/local_dataset
+
+# Keep credentials out of this file. Set CDSE_USERNAME0 and CDSE_PASSWORD0
+# in the runtime environment. Additional accounts may use matching numeric
+# suffixes, for example CDSE_USERNAME1 and CDSE_PASSWORD1.
+
+proxy_pool:
+  enabled: false
+  cooldown_seconds: 180
+  entries: []

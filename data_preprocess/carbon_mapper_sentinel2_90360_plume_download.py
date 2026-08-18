@@ -19,11 +19,8 @@ from concurrent.futures import ThreadPoolExecutor
 from pyproj import Transformer
 from rasterio.windows import Window
 
-# CDSE_USERNAME0 = 'yuyao16@ualberta.ca'
-# CDSE_PASSWORD0 = 'finhah-3zihty-seHmuf'
-
-CDSE_USERNAME0 = 'yuyaow42@gmail.com'
-CDSE_PASSWORD0 = 'finhah-3zihty-seHmuf'
+CDSE_USERNAME0 = os.environ.get('CDSE_USERNAME0', '')
+CDSE_PASSWORD0 = os.environ.get('CDSE_PASSWORD0', '')
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from util.utils import load_config, parse_args  # noqa: E402

@@ -36,11 +36,12 @@ __pycache__/
 settings.json
 *.code-workspace
 
-# Local credentials. Use data_downloading/credentials.example.json as a template.
+# Local credentials. Use environment variables and the tracked non-secret examples.
 /data_downloading/token.json
 /data_downloading/token*.json
 /data_downloading/credentials.json
 /data_downloading/config/client_secret*.json
+/data_preprocess/configs/carbon_mapper_sentinel2_plume_download.yaml
 .env
 .env.*
 !.env.example
