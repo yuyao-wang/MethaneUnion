@@ -1,0 +1,3 @@
+event_id,id,label,latitude,longitude,event_time,available_sensor,S2_t0_path,S2_pre_path,S2_pre_pre_path,S2_plume_label_path,L89_t0_path,L89_pre_path,L89_pre_pre_path,L89_plume_label_path,EMIT_t0_path,EMIT_pre_path,EMIT_pre_pre_path,EMIT_plume_label_path,S5p_temporal_path
+e3,3,1,35.10,-117.20,2025-01-03T00:00:00Z,EMIT,,,,,,,,,data/e3_emit.npz,,,data/e3_emit_mask.tif,
+e4,4,0,40.70,-74.00,2025-01-04T00:00:00Z,"S2,S5P",data/e4_s2.tif,,,data/e4_s2_mask.tif,,,,,,,,,data/e4_s5p.npz

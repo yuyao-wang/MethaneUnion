@@ -1,24 +1,22 @@
-<p align="center">
-  <img src="Pictures/methaneunion_pipeline.png" alt="MethaneUnion dataset construction pipeline" width="100%">
-</p>
+# MethaneUnion
 
-<p align="center">
-  <b>An event-centered partial multi-sensor satellite dataset for methane plume detection.</b>
-</p>
+**A reproducible multi-source geospatial data pipeline and dataset for methane plume detection under incomplete satellite coverage.**
+
+- **4 satellite sources:** Sentinel-2 · Landsat 8/9 · EMIT · Sentinel-5P
+- **8,981 observable multi-sensor events** after matching and quality filtering
+- **Temporal and geographic alignment** across heterogeneous sensor observations
+- **Leakage-safe event-level splits** before crop and query generation
 
 <p align="center">
   <a href="https://huggingface.co/datasets/yuyao42/MethaneUnion">Dataset</a> ·
   <a href="https://github.com/yuyao-wang/MethaneFuse">MethaneFuse</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#dataset-protocols">Protocols</a> ·
-  <a href="#data-format">Data Format</a>
+  <a href="#data-pipeline">Data Pipeline</a> ·
+  <a href="#data-quality--validation">Validation</a> ·
+  <a href="#quick-start">Quick Start</a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Task-Methane%20Plume%20Detection-green" alt="Task">
-  <img src="https://img.shields.io/badge/Sensors-S2%20%7C%20L8%2F9%20%7C%20EMIT%20%7C%20S5P-blue" alt="Sensors">
-  <img src="https://img.shields.io/badge/Data-Multi--sensor%20Satellite-purple" alt="Data">
-  <img src="https://img.shields.io/badge/License-CC--BY--NC--4.0-lightgrey" alt="License">
+  <img src="Pictures/methaneunion_pipeline.png" alt="MethaneUnion dataset construction pipeline" width="100%">
 </p>
 
 ## Overview
@@ -29,14 +27,46 @@ Unlike fully paired multi-sensor datasets, MethaneUnion preserves the sensor ava
 
 MethaneUnion is the dataset and evaluation benchmark used by [MethaneFuse](https://github.com/yuyao-wang/MethaneFuse), a two-stage learning framework for methane plume detection from naturally available satellite observations.
 
-## Highlights
+## Data Pipeline
 
-* **Event-centered benchmark** built from Carbon Mapper plume reports.
-* **Partial multi-sensor observations** from Sentinel-2, Landsat 8/9, EMIT, and Sentinel-5P.
-* **8,981 observable multi-sensor events** after sensor matching and quality filtering.
-* **Classification and segmentation protocols** at 120 m, 360 m, 480 m, and 960 m query scales.
-* **Event-level split control** to avoid leakage between train and test samples derived from the same plume report.
-* **Minimal Python loader** for released split CSVs, extracted sensor files, and original archive files.
+```text
+Carbon Mapper plume events
+        ↓
+Source discovery and acquisition [S2 · L8/9 · EMIT · S5P]
+        ↓
+Temporal matching → geospatial alignment → sensor-specific quality filtering
+        ↓
+Event-level sensor availability → query and crop generation
+        ↓
+Leakage-safe temporal/geographic splits → released manifests + Python loader
+```
+
+Carbon Mapper reports provide the event location, time, and reference plume mask. Sensor observations are discovered independently, aligned to the event in space and time, filtered with sensor-specific checks, and retained without requiring every sensor to be present.
+
+Quality control is applied before query generation and again at release time. The published manifests keep all samples derived from the same plume event in one partition, preventing event-level train/test leakage.
+
+## Engineering Challenges
+
+1. **Heterogeneous sensors.** Spatial resolution, revisit schedule, spectral bands, file formats, and geographic coverage differ across the four sources. The pipeline normalizes these inputs into an event-centered representation while preserving sensor-specific data.
+2. **Missing observations.** MethaneUnion does not force a fully paired dataset. It records the sensors actually available for each event so models and evaluations reflect real satellite coverage.
+3. **Leakage control.** One plume report can produce multiple observations, crops, and queries. Splits are assigned at the event level before derived samples are generated.
+
+## Data Quality & Validation
+
+The repository includes a manifest-level quality report generator and test fixtures. It audits event counts, sensor availability, required columns, coordinate/time validity, path availability, and train/test event overlap without requiring the full dataset to be downloaded.
+
+```bash
+python scripts/build_data_quality_report.py \
+  --source-manifest path/to/source_events.csv \
+  --release-manifest path/to/released_events.csv \
+  --train-manifest path/to/train.csv \
+  --test-manifest path/to/test.csv \
+  --output-json artifacts/data_quality/summary.json \
+  --output-markdown artifacts/data_quality/report.md \
+  --fail-on-issues
+```
+
+Use `--verify-files --data-root <dataset-root>` to check non-empty manifest paths against local files. See [Data Quality Report](docs/data_quality.md) for the validation contract and [Generated Artifacts](docs/generated_artifacts.md) for repository output policy.
 
 ## Data Access
 
@@ -67,13 +97,6 @@ The loader supports both extracted files and the original `dataset_part_*.tar.gz
 
 ## Quick Start
 
-Clone the repository:
-
-```bash
-git clone https://github.com/yuyao-wang/MethaneUnion.git
-cd MethaneUnion
-```
-
 Load a released split:
 
 ```python
@@ -81,54 +104,18 @@ from methaneunion import MethaneUnionDataset
 
 dataset = MethaneUnionDataset(
     root="data/MethaneUnion",
+    split_scheme="temporal",  # use "geo" for the geo-cluster split
     split="test",
     scale_m=480,
     sensors=["S2", "L89", "EMIT", "S5P"],
 )
 
 sample = dataset[0]
-
-print(sample.keys())
 print(sample["loaded_sensors"])
 print(sample["observations"]["S2"]["data"]["t0"].shape)
 ```
 
-Each returned sample contains:
-
-```text
-id
-label
-latitude
-longitude
-available_sensors
-loaded_sensors
-observations
-metadata
-```
-
-The `observations` field stores the loaded sensor arrays and their original relative paths. The `metadata` field stores the raw CSV row as a dictionary.
-
-By default, the loader reads the temporal split:
-
-```python
-dataset = MethaneUnionDataset(
-    root="data/MethaneUnion",
-    split_scheme="temporal",
-    split="test",
-    scale_m=480,
-)
-```
-
-To use the geo-cluster split:
-
-```python
-dataset = MethaneUnionDataset(
-    root="data/MethaneUnion",
-    split_scheme="geo",
-    split="test",
-    scale_m=480,
-)
-```
+Each sample provides its ID, label, coordinates, available/loaded sensors, observations, and raw manifest metadata. The loader supports extracted files and the original `dataset_part_*.tar.gz` archives.
 
 ## Dataset Statistics
 
@@ -154,33 +141,14 @@ MethaneUnion expands valid Sentinel-2-only coverage from **3,211** events to **8
 
 ## Dataset Protocols
 
-MethaneUnion provides two derived learning protocols: `D_pre` for sensor-native pretraining and `D_scale` for scale-controlled downstream evaluation.
+MethaneUnion provides two derived views:
 
-### `D_pre`: Sensor-native pretraining protocol
+| Protocol | Purpose | Scales / crop sizes |
+| --- | --- | --- |
+| `D_pre` | Sensor-native pretraining | 32 × 32 for S2/L8/9/EMIT; 3 × 3 for S5P |
+| `D_scale` | Query-level classification and segmentation | 120 m, 360 m, 480 m, 960 m |
 
-`D_pre` uses fixed-pixel crops from each available sensor. Each crop receives a binary methane label according to whether its geographic footprint overlaps the Carbon Mapper plume mask.
-
-| Sensor      |      Crop size |
-| ----------- | -------------: |
-| Sentinel-2  | 32 × 32 pixels |
-| Landsat 8/9 | 32 × 32 pixels |
-| EMIT        | 32 × 32 pixels |
-| Sentinel-5P |   3 × 3 pixels |
-
-This protocol is used for Stage 1 sensor-native representation learning in MethaneFuse.
-
-### `D_scale`: Multi-scale query protocol
-
-`D_scale` defines query-level classification and segmentation samples at controlled geographic footprints.
-
-| Query scale | Classification | Segmentation |
-| ----------: | :------------: | :----------: |
-|       120 m |        ✓       |       ✓      |
-|       360 m |        ✓       |       ✓      |
-|       480 m |        ✓       |       ✓      |
-|       960 m |        ✓       |       ✓      |
-
-For Sentinel-2, Landsat 8/9, and EMIT, dense segmentation masks are generated by reprojecting the Carbon Mapper plume mask to the sensor grid. Sentinel-5P is used as coarse methane context and is not used for dense plume-mask supervision.
+Dense masks are generated for Sentinel-2, Landsat 8/9, and EMIT by reprojecting the Carbon Mapper plume mask. Sentinel-5P provides coarse CH₄ context and is not used for dense-mask supervision.
 
 ## Splits
 
@@ -195,53 +163,14 @@ Both split protocols are applied at the Carbon Mapper event level before crop an
 
 ## Data Format
 
-Each event-level record contains:
+Event-level records contain the event ID/time, coordinates, available sensors, observation paths, plume-mask path, split, and source metadata. Query-level records add the query ID/time/center/scale, classification label, segmentation-mask paths, and sensor-crop paths.
+
+Released manifests use sensor-specific path columns:
 
 ```text
-event_id
-event_time
-latitude
-longitude
-available_sensors
-sensor_observation_paths
-plume_mask_path
-split
-metadata
-```
-
-Each query-level record contains:
-
-```text
-query_id
-event_id
-query_time
-query_center
-query_scale_m
-available_sensors
-classification_label
-segmentation_mask_paths
-sensor_crop_paths
-split
-```
-
-The released CSV manifests include sensor-specific paths such as:
-
-```text
-S2_t0_path
-S2_pre_path
-S2_pre_pre_path
-S2_plume_label_path
-
-L89_t0_path
-L89_pre_path
-L89_pre_pre_path
-L89_plume_label_path
-
-EMIT_t0_path
-EMIT_pre_path
-EMIT_pre_pre_path
-EMIT_plume_label_path
-
+S2_{t0,pre,pre_pre,plume_label}_path
+L89_{t0,pre,pre_pre,plume_label}_path
+EMIT_{t0,pre,pre_pre,plume_label}_path
 S5p_temporal_path
 ```
 
@@ -253,6 +182,7 @@ MethaneUnion/
 ├── configs/                         # Configuration files
 ├── data_downloading/                # Data acquisition utilities
 ├── data_preprocess/                 # Shared preprocessing code
+├── docs/                             # Validation and operations documentation
 ├── methaneunion/                    # Minimal released-dataset loader
 ├── preprocess_dataset_EMIT/         # EMIT preprocessing pipeline
 ├── preprocess_dataset_L89/          # Landsat 8/9 preprocessing pipeline
@@ -260,6 +190,8 @@ MethaneUnion/
 ├── preprocess_dataset_query_multi/  # Query construction pipeline
 ├── preprocess_dataset_s2/           # Sentinel-2 preprocessing pipeline
 ├── preprocess_dataset_s5p/          # Sentinel-5P preprocessing pipeline
+├── scripts/                          # Repository-level validation utilities
+├── tests/                            # Small deterministic fixtures and smoke tests
 ├── train/                           # Training code and model components
 └── util/                            # Utility functions
 ```
