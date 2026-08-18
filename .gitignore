@@ -35,3 +35,26 @@ __pycache__/
 .idea/
 settings.json
 *.code-workspace
+
+# Local credentials. Use environment variables and the tracked non-secret examples.
+/data_downloading/token.json
+/data_downloading/token*.json
+/data_downloading/credentials.json
+/data_downloading/config/client_secret*.json
+/data_preprocess/configs/carbon_mapper_sentinel2_plume_download.yaml
+.env
+.env.*
+!.env.example
+
+# Active pipeline outputs and resumable state on A100.
+/Upgrade_data_pipeline/csv/
+/Upgrade_data_pipeline/logs/
+/Upgrade_data_pipeline/temp/
+/artifacts/
+*.log
+*.pid
+*.tmp
+*.tmp.*
+*.before_*
+*.pre_reconcile_*
+*.bad_reconcile_*
