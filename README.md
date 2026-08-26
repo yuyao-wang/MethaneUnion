@@ -12,7 +12,8 @@
   <a href="https://github.com/yuyao-wang/MethaneFuse">MethaneFuse</a> ·
   <a href="#data-pipeline">Data Pipeline</a> ·
   <a href="#data-quality--validation">Validation</a> ·
-  <a href="#quick-start">Quick Start</a>
+  <a href="#quick-start">Quick Start</a> ·
+  <a href="#citation">Citation</a>
 </p>
 
 <p align="center">
@@ -211,14 +212,15 @@ https://github.com/yuyao-wang/MethaneFuse
 
 ## Citation
 
-If you use MethaneUnion or MethaneFuse, please cite:
+The MethaneFuse paper, which introduces MethaneUnion and MethaneFuse, has been accepted for publication at the 2026 IEEE International Conference on Data Mining (ICDM 2026). If you use either resource, please cite:
 
 ```bibtex
-@misc{wang2026methaneunion,
-  title  = {MethaneUnion: An Event-Centered Partial Multi-Sensor Satellite Dataset for Methane Plume Detection},
-  author = {Wang, Yuyao},
-  year   = {2026},
-  note   = {Dataset and code release}
+@inproceedings{wang2026methanefuse,
+  title     = {MethaneFuse: Learning from Multi-Sensor Satellite Observations for Methane Plume Detection},
+  author    = {Wang, Yuyao and Leung, Juliana Y. and Niu, Di},
+  booktitle = {2026 IEEE International Conference on Data Mining (ICDM)},
+  year      = {2026},
+  note      = {Accepted for publication}
 }
 ```
 
